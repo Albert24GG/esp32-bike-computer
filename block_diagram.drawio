@@ -1,0 +1,148 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="RhOL4sUCrM4CuN0G6hoV">
+    <mxGraphModel dx="1535" dy="928" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="wheel_cluster" parent="1" style="swimlane;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4 1 4;strokeColor=#23445d;fillColor=#bac8d3;startSize=30;verticalAlign=top;fontStyle=1;rounded=1;" value="&lt;div&gt;Wheel Module&lt;/div&gt;" vertex="1">
+          <mxGeometry height="340" width="320" x="97" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-1" edge="1" parent="wheel_cluster" source="esp32c6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=0;" target="boost">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-5" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;div&gt;3.3V&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.0858" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="esp32c6" parent="wheel_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#b46504;fillColor=#fad7ac;fontStyle=1" value="XIAO ESP32-C6" vertex="1">
+          <mxGeometry height="60" width="120" x="160" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lipo_wheel" parent="wheel_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#0e8088;fillColor=#b0e3e6;fillStyle=solid;" value="3.7V LiPo Battery" vertex="1">
+          <mxGeometry height="60" width="100" x="20" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-6" edge="1" parent="wheel_cluster" source="boost" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;curved=0;" target="hall">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-7" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="5V" vertex="1">
+          <mxGeometry relative="1" x="0.0222" y="1" as="geometry">
+            <mxPoint x="7" y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="boost" parent="wheel_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#56517e;fillColor=#d0cee2;" value="DC-DC 5V Boost Converter" vertex="1">
+          <mxGeometry height="60" width="120" x="20" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-10" edge="1" parent="wheel_cluster" source="hall" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="esp32c6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-11" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-10" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;div&gt;Data&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.1054" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hall" parent="wheel_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#36393d;fillColor=#cce5ff;" value="Hall Effect Sensor (US5881)" vertex="1">
+          <mxGeometry height="60" width="120" x="160" y="256" as="geometry" />
+        </mxCell>
+        <mxCell id="pwr1" edge="1" parent="wheel_cluster" source="lipo_wheel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;" target="esp32c6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="main_cluster" parent="1" style="swimlane;whiteSpace=wrap;html=1;strokeColor=#23445d;fillColor=#bac8d3;startSize=30;verticalAlign=top;fontStyle=1;rounded=1;dashed=1;dashPattern=8 4 1 4;" value="Main Module" vertex="1">
+          <mxGeometry height="386" width="380" x="557" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="esp32s3" parent="main_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#b46504;fillColor=#fad7ac;fontStyle=1" value="XIAO ESP32-S3" vertex="1">
+          <mxGeometry height="60" width="120" x="153" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lipo_main" parent="main_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#0e8088;fillColor=#b0e3e6;" value="3.7V LiPo Battery" vertex="1">
+          <mxGeometry height="60" width="90" x="10" y="106" as="geometry" />
+        </mxCell>
+        <mxCell id="spi_bus" parent="main_cluster" style="swimlane;whiteSpace=wrap;html=1;startSize=30;verticalAlign=top;rounded=1;fillColor=#d0cee2;strokeColor=#56517e;" value="SPI Components (Shared Bus)" vertex="1">
+          <mxGeometry height="190" width="180" x="65" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="lcd" parent="spi_bus" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#666666;fillColor=#f5f5f5;fontColor=#333333;" value="ILI9341 LCD Display" vertex="1">
+          <mxGeometry height="40" width="140" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="touch" parent="spi_bus" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#666666;fillColor=#f5f5f5;fontColor=#333333;" value="XPT2046 Touch Controller" vertex="1">
+          <mxGeometry height="40" width="140" x="20" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="sd_reader" parent="spi_bus" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#666666;fillColor=#f5f5f5;fontColor=#333333;" value="SD Card Reader" vertex="1">
+          <mxGeometry height="40" width="140" x="20" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-27" edge="1" parent="main_cluster" source="microsd" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="sd_reader">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="microsd" parent="main_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#23445d;fillColor=#bac8d3;" value="Micro SD Card" vertex="1">
+          <mxGeometry height="40" width="80" x="283" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="pwr4" edge="1" parent="main_cluster" source="lipo_main" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;fontSize=10;curved=0;" target="esp32s3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="spi_conn" edge="1" parent="main_cluster" source="esp32s3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;endArrow=classic;endFill=1;strokeWidth=1;" target="spi_bus" value="&lt;div&gt;SPI Bus&lt;/div&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-14" edge="1" parent="main_cluster" source="0r1Bhx1H6yGYz-8eZ5pn-13" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;elbow=vertical;curved=0;" target="esp32s3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="315" y="156" />
+              <mxPoint x="243" y="156" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xiKHYAePzTnQERTu23l0-10" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-14" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Trigger" vertex="1">
+          <mxGeometry relative="1" x="-0.2106" y="3" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-13" parent="main_cluster" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#10739e;fillColor=#b1ddf0;" value="Capacitive Touch Pad" vertex="1">
+          <mxGeometry height="40" width="80" x="275" y="216" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-19" edge="1" parent="main_cluster" source="0r1Bhx1H6yGYz-8eZ5pn-18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;curved=0;" target="0r1Bhx1H6yGYz-8eZ5pn-13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-18" parent="main_cluster" style="shape=waypoint;sketch=0;fillStyle=solid;size=6;pointerEvents=1;points=[];fillColor=none;resizable=0;rotatable=0;perimeter=centerPerimeter;snapToPoint=1;" value="" vertex="1">
+          <mxGeometry height="20" width="20" x="305" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-8" edge="1" parent="1" source="magnet" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;dashed=1;" target="hall">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-9" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;div&gt;Magnetic Interaction&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.0407" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="magnet" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#ae4132;fillColor=#fad9d5;fontStyle=1" value="Bike Wheel Magnet" vertex="1">
+          <mxGeometry height="60" width="120" x="257" y="576" as="geometry" />
+        </mxCell>
+        <mxCell id="phone" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#ae4132;fillColor=#fad9d5;fontStyle=1" value="Android Phone" vertex="1">
+          <mxGeometry height="60" width="100" x="972" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-16" edge="1" parent="1" source="0r1Bhx1H6yGYz-8eZ5pn-15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;curved=0;" target="touch">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="882" y="480" />
+              <mxPoint x="882" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#ae4132;fillColor=#fad9d5;fontStyle=1" value="&lt;div&gt;User&lt;/div&gt;" vertex="1">
+          <mxGeometry height="40" width="70" x="987" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-23" edge="1" parent="1" source="esp32s3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;curved=0;startArrow=classic;startFill=1;" target="phone">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-24" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-23" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="BLE" vertex="1">
+          <mxGeometry relative="1" x="-0.0614" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-25" edge="1" parent="1" source="esp32c6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;startArrow=classic;startFill=1;dashed=1;" target="esp32s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="0r1Bhx1H6yGYz-8eZ5pn-26" connectable="0" parent="0r1Bhx1H6yGYz-8eZ5pn-25" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="ESP-NOW" vertex="1">
+          <mxGeometry relative="1" x="-0.2812" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
