@@ -1,3 +1,2 @@
 dependencies:
   espressif/led_strip: "^3.0.0"
-  espp/logger: "=1.0.36"

@@ -1,6 +1,5 @@
 #include "hal/gpio_types.h"
 #include "soc/lp_timer_struct.h"
-#include "soc/soc.h"
 #include "ulp_lp_core.h"
 #include "ulp_lp_core_gpio.h"
 #include "ulp_lp_core_interrupts.h"
@@ -15,6 +14,7 @@
 volatile uint64_t s_wheel_periods_buf[WHEEL_PERIODS_BUF_SIZE] = {0};
 volatile uint32_t s_wheel_periods_buf_len = 0;
 volatile bool is_first_wakeup = true;
+volatile bool entered_inactive_state = false;
 
 static uint64_t last_wheel_counter = 0;
 
@@ -40,7 +40,7 @@ static uint64_t read_counter(size_t idx) {
 
 static void transfer_wheel_periods_buf_to_hp() {
   memcpy((void *)s_wheel_periods_buf, (const void *)l_wheel_periods_buf,
-         sizeof(s_wheel_periods_buf));
+         l_wheel_periods_buf_len * sizeof(uint64_t));
   s_wheel_periods_buf_len = l_wheel_periods_buf_len;
 
   // Reset the local buffer length for the next batch of readings
@@ -93,6 +93,10 @@ static void timer_handler() {
 
 static void gpio_handler() {
   update_wheel_periods_buf();
+
+  if (entered_inactive_state) {
+    notify_hp = true;
+  }
 
   inactivity_cnt = 0;
 

@@ -6,32 +6,25 @@
 #include "esp_system.h"
 #include "driver/rtc_io.h"
 #include "esp_sleep.h"
+#include "hal/uart_types.h"
 #include "ulp_lp_core.h"
 #include "ulp_main.h"
 #include "led_strip.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "soc/rtc.h"
 #include "esp_private/esp_clk.h"
 
-#include "logger.hpp"
 #include "constants.hpp"
 #include <cstddef>
 #include <cstdint>
+#include "esp_log.h"
 
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 
-static constexpr auto logger_config = espp::Logger::Config{
-    .tag = "WHEEL_MODULE",
-    .include_time = true,
-    .rate_limit = std::chrono::microseconds(100),
-    .level = espp::Logger::Verbosity::DEBUG
-};
-
-static const auto logger = espp::Logger(logger_config);
 
 static RTC_DATA_ATTR size_t wakeup_cnt_since_recalibration = 0;
-static RTC_DATA_ATTR bool entered_inactive_state = false;
 
 
 static void wakeup_gpio_init()
@@ -44,18 +37,20 @@ static void wakeup_gpio_init()
     rtc_gpio_wakeup_enable(SENSOR_PIN, GPIO_INTR_NEGEDGE);
 }
 
-static void init_ulp_program(uint32_t wakeup_source, uint32_t timer_sleep_duration_us = LP_TIMER_DURATION_US) {
-    esp_err_t err = ulp_lp_core_load_binary(ulp_main_bin_start, (ulp_main_bin_end - ulp_main_bin_start));
-    ESP_ERROR_CHECK(err);
-
+static void start_ulp_program(uint32_t wakeup_source, uint32_t timer_sleep_duration_us = LP_TIMER_DURATION_US) {
     /* Start the program */
     ulp_lp_core_cfg_t cfg = {
         .wakeup_source = wakeup_source,
         .lp_timer_sleep_duration_us = timer_sleep_duration_us,
     };
 
-    err = ulp_lp_core_run(&cfg);
+    ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
+}
+
+static void init_ulp_program(uint32_t wakeup_source, uint32_t timer_sleep_duration_us = LP_TIMER_DURATION_US) {
+    esp_err_t err = ulp_lp_core_load_binary(ulp_main_bin_start, (ulp_main_bin_end - ulp_main_bin_start));
     ESP_ERROR_CHECK(err);
+    start_ulp_program(wakeup_source, timer_sleep_duration_us);
 }
 
 static uint8_t s_led_state = 0;
@@ -76,20 +71,22 @@ static void configure_led()
 }
 
 static void enter_inactive_state() {
-    logger.info("Entering inactive state due to inactivity timeout\n");
+    //logger.info("Entering inactive state due to inactivity timeout\n");
+    ESP_LOGI(TAG, "Entering inactive state due to inactivity timeout\n");
 
-    entered_inactive_state = true;
+    ulp_entered_inactive_state = true;
+    ulp_is_first_wakeup = true;
     ulp_lp_core_stop();
-    init_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO);
+    start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO);
 }
 
 static void exit_inactive_state() {
-    logger.info("Exiting inactive state\n");
+    // logger.info("Exiting inactive state\n");
+    ESP_LOGI(TAG, "Exiting inactive state\n");
 
-    entered_inactive_state = false;
-    ulp_is_first_wakeup = true;
+    ulp_entered_inactive_state = false;
     ulp_lp_core_stop();
-    init_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO | ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
+    start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO | ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
 }
 
 static uint64_t read_uin64_t(uint32_t* addr) {
@@ -99,13 +96,8 @@ static uint64_t read_uin64_t(uint32_t* addr) {
 static void handle_ulp_wakeup() {
     ++wakeup_cnt_since_recalibration;
 
-    if (entered_inactive_state || wakeup_cnt_since_recalibration >= WAKEUP_CNT_BEFORE_RECALIBRATION) {
-        if (entered_inactive_state) {
-            exit_inactive_state();
-        }
-        else {
-            wakeup_cnt_since_recalibration = 0;
-        }
+    if (ulp_entered_inactive_state || wakeup_cnt_since_recalibration >= WAKEUP_CNT_BEFORE_RECALIBRATION) {
+        wakeup_cnt_since_recalibration = 0;
         rtc_clk_cal(CLK_CAL_RTC_SLOW, SLOW_CLK_CAL_CYCLES);
     }
 
@@ -125,49 +117,68 @@ static void handle_ulp_wakeup() {
 
 
         // For now just print debug logs
+        ESP_LOGI(TAG, "Received %d wheel periods from ULP:", buf_len);
         for (size_t i = 0; i < buf_len; ++i) {
-            logger.debug("Wheel period {}: {} us", i, l_wheel_periods_buf[i]);
+            //logger.debug("Wheel period {}: {} us", i, l_wheel_periods_buf[i]);
+            ESP_LOGI(TAG, "Wheel period %d: %llu us", i, l_wheel_periods_buf[i]);
         }   
+
+        if (ulp_entered_inactive_state) {
+            exit_inactive_state();
+        }
     }
     else {
-        // Timeout occurred. Disable the timer LP wakeup source and enter an inactive state
-        enter_inactive_state();
+        if (ulp_entered_inactive_state) {
+            // This case can happen if the user triggers a wheel event (GPIO interrupt) which wakes up the LP core, but then the event is filtered out because it's the first wakeup after entering the inactive state. In this case we want to exit the inactive state so that future events are processed correctly.
+            exit_inactive_state();
+        }
+        else {
+            // Timeout occurred. Disable the timer LP wakeup source and enter an inactive state
+            enter_inactive_state();
+        }
     }
 }
 
 extern "C" void app_main(void)
 {
-    logger.info("Starting HP core\n");
+    // logger.info("Starting HP core\n");
+    ESP_LOGI(TAG, "Starting HP core\n");
 
     wakeup_gpio_init();
-    // configure_led();
+    configure_led();
 
-    // for (int i = 5; i > 0; i--) {
-    //     // printf("Starting in %d seconds... \n", i);
-    //     logger.debug("Starting in {} seconds... \n", i);
-    //     vTaskDelay(pdMS_TO_TICKS(500));
-    //     blink_led();
-    //     s_led_state = !s_led_state;
-    // }
+    for (int i = 5; i > 0; i--) {
+        // printf("Starting in %d seconds... \n", i);
+        // logger.debug("Starting in {} seconds... \n", i);
+        ESP_LOGD(TAG, "Starting in %d seconds... \n", i);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        blink_led();
+        s_led_state = !s_led_state;
+    }
 
     if (esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_ULP)) {
-        logger.info("Woke up from ULP wakeup\n");
+        //logger.info("Woke up from ULP wakeup\n");
+        ESP_LOGI(TAG, "Woke up from ULP wakeup\n");
+
         handle_ulp_wakeup();
     }
     else {
-        logger.info("Not a ULP wakeup, initializing it!\n");
+        //logger.info("Not a ULP wakeup, initializing it!\n");
+        ESP_LOGI(TAG, "Not a ULP wakeup, initializing it!\n");
         init_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO | ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
     }
 
     ESP_ERROR_CHECK(esp_sleep_enable_ulp_wakeup());
     // ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(10 * 1000000)); // Wake up after 1 second
 
-    logger.info("Entering deep sleep\n");
+    //logger.info("Entering deep sleep\n");
+    ESP_LOGI(TAG, "Entering deep sleep\n");
     fflush(stdout);
 
     /* Small delay to ensure the messages are printed */
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    // vTaskDelay(100 / portTICK_PERIOD_MS);
 
+    uart_wait_tx_idle_polling((uart_port_t)CONFIG_ESP_CONSOLE_UART_NUM);
     esp_deep_sleep_start();
 
     // while (true) {
