@@ -1,7 +1,10 @@
 set(HP_SOURCES "main.cpp")
 
 idf_component_register(SRCS "main.cpp"
-                    REQUIRES ulp
+                    REQUIRES
+                        ulp
+                        nvs_flash
+                        esp_wifi
                     INCLUDE_DIRS ".")
 #
 # ULP support additions to component CMakeLists.txt.

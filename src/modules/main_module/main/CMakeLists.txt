@@ -12,4 +12,6 @@ idf_component_register(SRC_DIRS "." "app/" "hardware/"
                         lvgl
                         fatfs
                         sdmmc
+                        nvs_flash
+                        esp_wifi
                     INCLUDE_DIRS ".")

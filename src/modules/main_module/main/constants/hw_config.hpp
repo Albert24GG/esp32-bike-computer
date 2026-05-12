@@ -4,7 +4,9 @@
 #include "driver/touch_version_types.h"
 #include "hal/spi_types.h"
 
-namespace constants::hw::touch {
+namespace constants::hw {
+
+namespace touch {
 
 constexpr inline touch_sensor_sample_config_t default_sample_cfg =
     TOUCH_SENSOR_V2_DEFAULT_SAMPLE_CONFIG(500, TOUCH_VOLT_LIM_L_0V5,
@@ -26,10 +28,16 @@ constexpr inline size_t channel_init_scan_times{3};
 // >= benchmark * (1 + ratio))
 constexpr inline float thresh_ratio{0.02f}; // 2%
 
-} // namespace constants::hw::touch
+} // namespace touch
 
-namespace constants::hw::lcd {
-    constexpr inline spi_host_device_t spi_host{SPI2_HOST};
-    constexpr inline int hres{240};
-    constexpr inline int vres{320};
-}
+namespace lcd {
+constexpr inline spi_host_device_t spi_host{SPI2_HOST};
+constexpr inline int hres{240};
+constexpr inline int vres{320};
+} // namespace lcd
+
+namespace wifi {
+constexpr inline uint8_t channel{1};
+} // namespace wifi
+
+} // namespace constants::hw
