@@ -29,10 +29,18 @@ extern const uint8_t ulp_main_bin_end[] asm("_binary_ulp_main_bin_end");
 
 static RTC_DATA_ATTR size_t wakeup_cnt_since_recalibration = 0;
 static RTC_DATA_ATTR uint64_t packet_seq = 1;
+static RTC_DATA_ATTR uint32_t slowclk_cal_value = esp_clk_slowclk_cal_get();
+
+static uint64_t *shared_periods_buf =
+    reinterpret_cast<uint64_t *>(ulp_shared_periods_buf);
+static uint32_t &shared_periods_buf_len = ulp_shared_periods_buf_len;
+static uint32_t &is_first_wakeup = ulp_is_first_wakeup;
+static uint32_t &entered_inactive_state = ulp_entered_inactive_state;
 
 static void init_wifi();
 static void init_espnow();
 static void send_packet(const uint64_t *periods_us, size_t periods_len);
+static void recalibrate_slow_clock();
 
 static void wakeup_gpio_init() {
   /* Configure the button GPIO as input, enable wakeup */
@@ -73,28 +81,25 @@ static void blink_led() {
 }
 
 static void configure_led() {
-  // ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
   gpio_reset_pin(BLINK_GPIO);
   /* Set the GPIO as a push/pull output */
   gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
 static void enter_inactive_state() {
-  // logger.info("Entering inactive state due to inactivity timeout\n");
   ESP_LOGI(TAG, "Entering inactive state due to inactivity timeout");
 
-  ulp_entered_inactive_state = true;
-  ulp_is_first_wakeup = true;
-  ulp_lp_core_stop();
+  // ulp_lp_core_stop();
+  entered_inactive_state = 1;
+  is_first_wakeup = 1;
   start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO);
 }
 
 static void exit_inactive_state() {
-  // logger.info("Exiting inactive state\n");
   ESP_LOGI(TAG, "Exiting inactive state");
 
-  ulp_entered_inactive_state = false;
-  ulp_lp_core_stop();
+  // ulp_lp_core_stop();
+  entered_inactive_state = 0;
   start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO |
                     ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
 }
@@ -106,63 +111,66 @@ static uint64_t read_uin64_t(uint32_t *addr) {
 static void handle_ulp_wakeup() {
   ++wakeup_cnt_since_recalibration;
 
-  if (ulp_entered_inactive_state ||
+  if (entered_inactive_state == 1 ||
       wakeup_cnt_since_recalibration >= WAKEUP_CNT_BEFORE_RECALIBRATION) {
     wakeup_cnt_since_recalibration = 0;
-    rtc_clk_cal(CLK_CAL_RTC_SLOW, SLOW_CLK_CAL_CYCLES);
+    recalibrate_slow_clock();
   }
 
-  if (ulp_s_wheel_periods_buf_len > 0) {
-    uint32_t clk_cal_value = esp_clk_slowclk_cal_get();
+  ulp_lp_core_stop();
 
-    size_t buf_len = ulp_s_wheel_periods_buf_len;
-    ulp_s_wheel_periods_buf_len = 0;
-    uint64_t l_wheel_periods_buf[WHEEL_PERIODS_BUF_SIZE] = {0};
-    for (size_t i = 0; i < buf_len; ++i) {
-      // Convert the wheel period from slow clock cycles to microseconds
-      l_wheel_periods_buf[i] = rtc_time_slowclk_to_us(
-          read_uin64_t(&ulp_s_wheel_periods_buf[2 * i]), clk_cal_value);
+  const uint32_t buf_len = std::min(shared_periods_buf_len, SHARED_PERIODS_BUF_SIZE);
+
+  if (buf_len > 0) {
+    uint64_t periods_buf[SHARED_PERIODS_BUF_SIZE] = {};
+
+    memcpy(periods_buf, shared_periods_buf, buf_len * sizeof(periods_buf[0]));
+    shared_periods_buf_len = 0;
+
+    if (entered_inactive_state == 1) {
+      entered_inactive_state = 0;
     }
 
-    // Send data via ESP-NOW
-    send_packet(l_wheel_periods_buf, buf_len);
+    start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO |
+                      ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
+
+    uint32_t valid_periods_cnt = 0;
+    for (size_t i = 0; i < buf_len; ++i) {
+      const uint64_t period_us = rtc_time_slowclk_to_us(periods_buf[i], slowclk_cal_value);
+      if (period_us < MIN_VALID_PERIOD_US) {
+        continue;
+      }
+
+      periods_buf[valid_periods_cnt++] = period_us;
+    }
+
+
+    send_packet(periods_buf, valid_periods_cnt);
 
     // For now just print debug logs
     ESP_LOGI(TAG, "Received %d wheel periods from ULP:", buf_len);
     for (size_t i = 0; i < buf_len; ++i) {
-      // logger.debug("Wheel period {}: {} us", i, l_wheel_periods_buf[i]);
-      ESP_LOGI(TAG, "Wheel period %d: %llu us", i, l_wheel_periods_buf[i]);
+      ESP_LOGI(TAG, "Wheel period %d: %llu us", i, periods_buf[i]);
     }
 
-    if (ulp_entered_inactive_state) {
-      exit_inactive_state();
-    }
   } else {
-    if (ulp_entered_inactive_state) {
-      // This case can happen if the user triggers a wheel event (GPIO
-      // interrupt) which wakes up the LP core, but then the event is filtered
-      // out because it's the first wakeup after entering the inactive state. In
-      // this case we want to exit the inactive state so that future events are
-      // processed correctly.
+    if (entered_inactive_state == 1) {
       exit_inactive_state();
     } else {
-      // Timeout occurred. Disable the timer LP wakeup source and enter an
-      // inactive state
       enter_inactive_state();
     }
   }
+
+
 }
 
 extern "C" void app_main(void) {
-  // logger.info("Starting HP core\n");
   ESP_LOGI(TAG, "Starting HP core\n");
 
   wakeup_gpio_init();
   configure_led();
 
   for (int i = 5; i > 0; i--) {
-    // printf("Starting in %d seconds... \n", i);
-    // logger.debug("Starting in {} seconds... \n", i);
     ESP_LOGI(TAG, "Starting in %d seconds...", i);
     vTaskDelay(pdMS_TO_TICKS(500));
     blink_led();
@@ -182,28 +190,11 @@ extern "C" void app_main(void) {
   }
 
   ESP_ERROR_CHECK(esp_sleep_enable_ulp_wakeup());
-  // ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(10 * 1000000)); // Wake up
-  // after 1 second
 
-  // logger.info("Entering deep sleep\n");
   ESP_LOGI(TAG, "Entering deep sleep");
-  fflush(stdout);
-
-  /* Small delay to ensure the messages are printed */
-  // vTaskDelay(100 / portTICK_PERIOD_MS);
 
   uart_wait_tx_idle_polling((uart_port_t)CONFIG_ESP_CONSOLE_UART_NUM);
   esp_deep_sleep_start();
-
-  // while (true) {
-  //     if (ulp_s_wheel_periods_buf_len > 0) {
-  //         logger.info("Wakeup\n");
-  //         handle_ulp_wakeup();
-  //     }
-  //     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  // }
-
-  // esp_restart();
 }
 
 void init_wifi() {
@@ -254,4 +245,14 @@ static void send_packet(const uint64_t *periods_us, size_t periods_len) {
 
   ESP_LOGI(TAG, "Sent packet with seq_num %llu and %u wheel periods",
            packet.seq_num, packet.periods_buf_len);
+}
+
+static void recalibrate_slow_clock() {
+  const uint32_t new_slowclk_cal_value =
+      rtc_clk_cal(CLK_CAL_RTC_SLOW, SLOW_CLK_CAL_CYCLES);
+  if (new_slowclk_cal_value != slowclk_cal_value &&
+      new_slowclk_cal_value != 0) {
+    slowclk_cal_value = new_slowclk_cal_value;
+    esp_clk_slowclk_cal_set(slowclk_cal_value);
+  }
 }

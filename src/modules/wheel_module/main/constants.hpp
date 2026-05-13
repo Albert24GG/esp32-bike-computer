@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <cstring>
 
-constexpr inline size_t WHEEL_PERIODS_BUF_SIZE = 10;
+constexpr inline uint64_t MIN_VALID_PERIOD_US = 50'000;
+constexpr inline uint32_t SHARED_PERIODS_BUF_SIZE = 10;
+constexpr inline uint32_t LP_CIRCULAR_BUF_SIZE = 50;
 constexpr inline gpio_num_t SENSOR_PIN = GPIO_NUM_0;
 constexpr inline uint32_t WAKEUP_CNT_BEFORE_RECALIBRATION = 60;
 constexpr inline uint32_t SLOW_CLK_CAL_CYCLES = 1024;
