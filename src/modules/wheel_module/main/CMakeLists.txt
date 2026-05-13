@@ -1,5 +1,3 @@
-set(HP_SOURCES "main.cpp")
-
 idf_component_register(SRCS "main.cpp"
                     REQUIRES
                         ulp
@@ -15,7 +13,6 @@ set(ulp_app_name ulp_${COMPONENT_NAME})
 # 2. Specify all C and Assembly source files.
 #    Files should be placed into a separate directory (in this case, ulp/),
 #    which should not be added to COMPONENT_SRCS.
-set (ULP_SOURCES "ulp/main.cpp")
 set(ulp_sources "ulp/main.cpp")
 
 #

@@ -28,12 +28,11 @@ extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[] asm("_binary_ulp_main_bin_end");
 
 static RTC_DATA_ATTR size_t wakeup_cnt_since_recalibration = 0;
-static RTC_DATA_ATTR uint64_t packet_seq = 0;
+static RTC_DATA_ATTR uint64_t packet_seq = 1;
 
 static void init_wifi();
 static void init_espnow();
-static void send_packet();
-
+static void send_packet(const uint64_t *periods_us, size_t periods_len);
 
 static void wakeup_gpio_init() {
   /* Configure the button GPIO as input, enable wakeup */
@@ -126,7 +125,7 @@ static void handle_ulp_wakeup() {
     }
 
     // Send data via ESP-NOW
-    send_packet();
+    send_packet(l_wheel_periods_buf, buf_len);
 
     // For now just print debug logs
     ESP_LOGI(TAG, "Received %d wheel periods from ULP:", buf_len);
@@ -207,7 +206,6 @@ extern "C" void app_main(void) {
   // esp_restart();
 }
 
-
 void init_wifi() {
   {
     esp_err_t ret = nvs_flash_init();
@@ -238,20 +236,22 @@ void init_espnow() {
   ESP_ERROR_CHECK(esp_now_add_peer(&PEER_INFO));
 }
 
-static void send_packet() {
+static void send_packet(const uint64_t *periods_us, size_t periods_len) {
   init_wifi();
   init_espnow();
 
   BikePacket packet = {};
-  packet.seq_num = packet_seq;
-  packet.periods_buf_len = ulp_s_wheel_periods_buf_len;
-  memcpy(packet.periods_buf_us, ulp_s_wheel_periods_buf,
-         ulp_s_wheel_periods_buf_len * sizeof(uint64_t));
+  packet.seq_num = packet_seq++;
+  packet.periods_buf_len =
+      static_cast<uint8_t>(std::min(periods_len, max_periods_per_packet));
 
-  ESP_ERROR_CHECK(esp_now_send(DEST_MAC_ADDR.data(), (const uint8_t *)&packet,
+  memcpy(packet.periods_buf_us, periods_us,
+         packet.periods_buf_len * sizeof(packet.periods_buf_us[0]));
+
+  ESP_ERROR_CHECK(esp_now_send(DEST_MAC_ADDR.data(),
+                               reinterpret_cast<const uint8_t *>(&packet),
                                sizeof(packet)));
-  ++packet_seq;
 
-  ESP_LOGI(TAG, "Sent packet with seq_num %llu and %d wheel periods",
+  ESP_LOGI(TAG, "Sent packet with seq_num %llu and %u wheel periods",
            packet.seq_num, packet.periods_buf_len);
 }

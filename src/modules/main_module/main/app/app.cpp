@@ -5,17 +5,18 @@
 #include "esp_now.h"
 #include "esp_wifi.h"
 #include "rom/ets_sys.h"
-#include "utils.hpp"
 
 #include "../../../common/espnow_packet.hpp"
 #include "driver/touch_sens.h"
 #include "driver/touch_sens_types.h"
 #include "driver/touch_version_types.h"
+#include "driver/uart.h"
 #include "esp_check.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_event_base.h"
 #include "esp_log_level.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
 
@@ -207,7 +208,7 @@ esp_err_t App::init() noexcept {
   ESP_RETURN_ON_ERROR(init_main_event_loop(), log_tag,
                       "Failed to initialize main event loop");
   ESP_LOGI(log_tag, "Initializing touch wakeup source...");
-  
+
   ESP_RETURN_ON_ERROR(init_touch_wakeup(), log_tag,
                       "Failed to initialize touch wakeup source");
   ESP_LOGI(log_tag, "Initializing WiFi and ESP-NOW...");
@@ -220,11 +221,15 @@ esp_err_t App::init() noexcept {
   ESP_LOGI(log_tag, "Initializing speed inactivity timer...");
   ESP_RETURN_ON_ERROR(init_speed_inactivity_timer(), log_tag,
                       "Failed to initialize speed inactivity timer");
-  
+
   ESP_LOGI(log_tag, "App initialization complete");
   initialized_ = true;
-  ESP_LOGI(log_tag, "initialized=%d, timeout_timer_handle=%p, speed_inactivity_timer_handle=%p",
+  ESP_LOGI(log_tag,
+           "initialized=%d, timeout_timer_handle=%p, "
+           "speed_inactivity_timer_handle=%p",
            initialized_, timeout_timer_handle_, speed_inactivity_timer_handle_);
+  ESP_LOGI(log_tag, "core = %d, app_ptr = %p", xPortGetCoreID(),
+           &App::get_instance());
   return ESP_OK;
 }
 
@@ -343,8 +348,9 @@ esp_err_t App::init_speed_inactivity_timer() noexcept {
       esp_timer_create(&timer_args, &speed_inactivity_timer_handle_), log_tag,
       "Failed to create speed inactivity timer");
   ESP_RETURN_ON_ERROR(
-      esp_timer_start_once(speed_inactivity_timer_handle_,
-                          constants::app::ride_metrics::speed_inactivity_timeout_us),
+      esp_timer_start_once(
+          speed_inactivity_timer_handle_,
+          constants::app::ride_metrics::speed_inactivity_timeout_us),
       log_tag, "Failed to start speed inactivity timer");
 
   return ESP_OK;
@@ -358,42 +364,39 @@ void App::speed_inactivity_timer_cb(void *arg) {
 void App::espnow_recv_cb(const esp_now_recv_info_t *recv_info,
                          const uint8_t *data, int data_len) {
   if (data_len != sizeof(BikePacket)) {
-    // ESP_LOGW(log_tag, "Received ESP-NOW packet with invalid length: %d",
-    //          data_len);
+    ESP_LOGW(log_tag, "Received ESP-NOW packet with invalid length: %d",
+             data_len);
     return;
   }
 
   App &app = App::get_instance();
 
-ESP_LOGI(log_tag, "recv_cb fired, initialized=%d, handle=%p", 
-             app.initialized_, app.speed_inactivity_timer_handle_);
-
-  const BikePacket &packet = *reinterpret_cast<const BikePacket *>(data);
-  // ESP_LOGI(
-  //     log_tag,
-  //     "Received ESP-NOW packet from " MACSTR ": seq_num=%u, sample_count=%u",
-  //     MAC2STR(recv_info->src_addr), packet.seq_num, packet.periods_buf_len);
+  BikePacket packet{};
+  memcpy(&packet, data, sizeof(BikePacket));
+  ESP_LOGI(
+      log_tag,
+      "Received ESP-NOW packet from " MACSTR ": seq_num=%u, sample_count=%u",
+      MAC2STR(recv_info->src_addr), packet.seq_num, packet.periods_buf_len);
 
   if (packet.seq_num <= app.last_packet_seq_num_) {
-    // ESP_LOGW(log_tag,
-    //          "Received out-of-order or duplicate packet: seq_num=%u, "
-    //          "last_seq_num=%u",
-    //          packet.seq_num, app.last_packet_seq_num_);
+    ESP_LOGW(log_tag,
+             "Received out-of-order or duplicate packet: seq_num=%u, "
+             "last_seq_num=%u",
+             packet.seq_num, app.last_packet_seq_num_);
     return;
   }
 
   app.last_packet_seq_num_ = packet.seq_num;
 
-  for (size_t i : std::views::iota(size_t{0}, packet.periods_buf_len)) {
+  for (uint8_t i : std::views::iota(uint8_t{0}, packet.periods_buf_len)) {
     const uint64_t period_us = packet.periods_buf_us[i];
     app.ride_metrics_.register_wheel_rotation(period_us);
   }
 
-  // ESP_LOGI(log_tag, "Updated ride metrics");
-
   // Reset the speed inactivity timer
   esp_err_t err = esp_timer_stop(app.speed_inactivity_timer_handle_);
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE && err != ESP_ERR_INVALID_ARG) {
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE &&
+      err != ESP_ERR_INVALID_ARG) {
     ESP_ERROR_CHECK(err);
   }
   ESP_ERROR_CHECK(esp_timer_start_once(

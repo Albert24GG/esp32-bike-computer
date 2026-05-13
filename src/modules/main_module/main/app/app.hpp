@@ -14,18 +14,22 @@ enum { APP_EVENT_TIMEOUT };
 
 class App {
 public:
-  static App& get_instance() noexcept {
+  static App &get_instance() noexcept {
     static App instance;
     return instance;
   }
+
+  App(const App &) = delete;
+  App &operator=(const App &) = delete;
 
   [[nodiscard]] esp_err_t init() noexcept;
 
   [[nodiscard]] esp_err_t signal_timeout() noexcept;
 
-
   // TEST ONLY
-  float get_current_speed_kmph() const noexcept { return ride_metrics_.get_current_speed_kmph(); }
+  float get_current_speed_kmph() const noexcept {
+    return ride_metrics_.get_current_speed_kmph();
+  }
 
 private:
   App() = default;
@@ -37,8 +41,8 @@ private:
   [[nodiscard]] esp_err_t init_espnow() noexcept;
   [[nodiscard]] esp_err_t init_speed_inactivity_timer() noexcept;
 
-  static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data,
-                             int data_len);
+  static void espnow_recv_cb(const esp_now_recv_info_t *recv_info,
+                             const uint8_t *data, int data_len);
   static void speed_inactivity_timer_cb(void *arg);
 
   esp_event_loop_handle_t main_event_loop_handle_{};

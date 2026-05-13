@@ -215,7 +215,7 @@ static void configure_led() {
 
 extern "C" void app_main() {
   configure_led();
-  app::App app = app::App::get_instance();
+  app::App &app = app::App::get_instance();
 
   ESP_ERROR_CHECK(app.init());
 
