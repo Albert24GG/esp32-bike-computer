@@ -70,44 +70,10 @@ private:
   ride_metrics::RideMetrics ride_metrics_{{}};
   uint64_t last_packet_seq_num_{0};
   struct {
-    hw::SpiBus spi_bus{hw::SpiBus::Config{
-        .host = constants::hw::lcd::spi_host,
-        .mosi = constants::hw::pins::spi_mosi,
-        .miso = constants::hw::pins::spi_miso,
-        .sclk = constants::hw::pins::spi_sclk,
-        .max_transfer_sz = constants::hw::lcd::hres * 80 * sizeof(std::uint16_t),
-    }};
-    hw::Ili9341Display lcd{hw::Ili9341Display::Config{
-      .host = spi_bus.host(),
-      .cs = constants::hw::pins::lcd_cs,
-      .dc = constants::hw::pins::lcd_dc,
-      .rst = constants::hw::pins::lcd_reset,
-      .backlight = constants::hw::pins::lcd_backlight,
-      .hres = constants::hw::lcd::hres,
-      .vres = constants::hw::lcd::vres,
-      .pclk_hz = 40 * 1000 * 1000,
-      .mirror_x = false,
-      .mirror_y = true,
-      .swap_xy = false,
-      .invert_color = false,
-    }};
-    hw::Xpt2046Touch touch{hw::Xpt2046Touch::Config{
-      .host = spi_bus.host(),
-      .cs = constants::hw::pins::touchscr_cs,
-      .x_max = constants::hw::lcd::hres,
-      .y_max = constants::hw::lcd::vres,
-      .swap_xy = false,
-      .mirror_x = false,
-      .mirror_y = true,
-      .pclk_hz = 2 * 1000 * 1000,
-    }};
-    hw::SdCard sd{hw::SdCard::Config{
-      .host = spi_bus.host(),
-      .cs = constants::hw::pins::sd_card_cs,
-      .mount_point = "/sdcard",
-      .max_files = 5,
-      .format_if_mount_failed = false,
-    }};
+    hw::SpiBus spi_bus{};
+    hw::Ili9341Display lcd{};
+    hw::Xpt2046Touch touch{};
+    hw::SdCard sd{};
   } hardware_{};
   graphics::LvglPort lvgl_{};
 };

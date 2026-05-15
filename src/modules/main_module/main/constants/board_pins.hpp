@@ -1,6 +1,7 @@
 #pragma once
 
 #include "driver/gpio.h"
+#include "soc/gpio_num.h"
 
 namespace constants::hw::pins {
 
@@ -14,5 +15,6 @@ constexpr inline gpio_num_t spi_sclk{GPIO_NUM_7};
 constexpr inline gpio_num_t spi_miso{GPIO_NUM_8};
 constexpr inline gpio_num_t spi_mosi{GPIO_NUM_9};
 constexpr inline gpio_num_t lcd_backlight{GPIO_NUM_43};
+constexpr inline gpio_num_t touchscr_irq{GPIO_NUM_NC};
 
 } // namespace constants::hw::pins

@@ -13,22 +13,7 @@ namespace hw {
 
 class Xpt2046Touch {
 public:
-  struct Config {
-    spi_host_device_t host{};
-    gpio_num_t cs{};
-    gpio_num_t irq{GPIO_NUM_NC};
-
-    int x_max{240};
-    int y_max{320};
-
-    bool swap_xy{false};
-    bool mirror_x{false};
-    bool mirror_y{false};
-
-    int pclk_hz{2 * 1000 * 1000};
-  };
-
-  explicit Xpt2046Touch(Config cfg) noexcept : cfg_{cfg} {}
+  Xpt2046Touch() noexcept = default;
 
   Xpt2046Touch(const Xpt2046Touch &) = delete;
   Xpt2046Touch &operator=(const Xpt2046Touch &) = delete;
@@ -56,7 +41,6 @@ public:
 private:
   static constexpr auto tag_ = "Xpt2046Touch";
 
-  const Config cfg_{};
   esp_lcd_panel_io_handle_t io_{nullptr};
   esp_lcd_touch_handle_t touch_{nullptr};
   lv_indev_t *indev_{nullptr};

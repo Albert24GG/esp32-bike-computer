@@ -1,6 +1,8 @@
 #include "lvgl_port_wrapper.hpp"
 #include "esp_check.h"
 
+#include "constants/hw_config.hpp"
+
 namespace app::graphics {
 
 esp_err_t LvglPort::init() noexcept {
@@ -13,21 +15,21 @@ esp_err_t LvglPort::init() noexcept {
 }
 
 esp_err_t LvglPort::add_display(hw::Ili9341Display &lcd) noexcept {
-  const auto &lcd_cfg = lcd.config();
+  using namespace constants::hw;
 
   lvgl_port_display_cfg_t disp_cfg = {};
   disp_cfg.io_handle = lcd.io();
   disp_cfg.panel_handle = lcd.panel();
-  disp_cfg.buffer_size = lcd_cfg.hres * 40;
+  disp_cfg.buffer_size = lcd::hres * 40;
   disp_cfg.double_buffer = true;
-  disp_cfg.hres = lcd_cfg.hres;
-  disp_cfg.vres = lcd_cfg.vres;
+  disp_cfg.hres = lcd::hres;
+  disp_cfg.vres = lcd::vres;
   disp_cfg.monochrome = false;
   disp_cfg.color_format = LV_COLOR_FORMAT_RGB565;
 
-  disp_cfg.rotation.swap_xy = lcd_cfg.swap_xy;
-  disp_cfg.rotation.mirror_x = lcd_cfg.mirror_x;
-  disp_cfg.rotation.mirror_y = lcd_cfg.mirror_y;
+  disp_cfg.rotation.swap_xy = lcd::swap_xy;
+  disp_cfg.rotation.mirror_x = lcd::mirror_x;
+  disp_cfg.rotation.mirror_y = lcd::mirror_y;
 
   disp_cfg.flags.buff_dma = true;
   disp_cfg.flags.swap_bytes = true;
