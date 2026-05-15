@@ -10,7 +10,6 @@
 namespace app {
 
 ESP_EVENT_DECLARE_BASE(APP_EVENTS);
-enum { APP_EVENT_TIMEOUT };
 
 class App {
 public:
@@ -24,7 +23,7 @@ public:
 
   [[nodiscard]] esp_err_t init() noexcept;
 
-  [[nodiscard]] esp_err_t signal_timeout() noexcept;
+  // [[nodiscard]] esp_err_t signal_timeout() noexcept;
 
   // TEST ONLY
   float get_current_speed_kmph() const noexcept {
@@ -42,8 +41,17 @@ private:
   [[nodiscard]] esp_err_t init_speed_inactivity_timer() noexcept;
 
   static void espnow_recv_cb(const esp_now_recv_info_t *recv_info,
-                             const uint8_t *data, int data_len);
-  static void speed_inactivity_timer_cb(void *arg);
+                             const uint8_t *data, int data_len) noexcept;
+  static void sleep_timeout_timer_cb(void *arg) noexcept;
+  static void speed_inactivity_timer_cb(void *arg) noexcept;
+
+  static void espnow_recv_handler(void *event_handler_arg,
+                                  esp_event_base_t event_base, int32_t event_id,
+                                  void *event_data) noexcept;
+  static void sleep_timeout_handler(void *event_handler_arg,
+                                    esp_event_base_t event_base,
+                                    int32_t event_id,
+                                    void *event_data) noexcept;
 
   esp_event_loop_handle_t main_event_loop_handle_{};
   esp_timer_handle_t timeout_timer_handle_{};

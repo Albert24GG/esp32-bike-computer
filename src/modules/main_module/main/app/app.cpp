@@ -74,6 +74,9 @@ esp_err_t touch_initial_calibration(touch_sensor_handle_t sens_handle,
 
 namespace app {
 
+ESP_EVENT_DEFINE_BASE(APP_EVENTS);
+enum { APP_EVENT_SLEEP_TIMEOUT, APP_EVENT_ESPNOW_RECV };
+
 esp_err_t App::init_touch_wakeup() noexcept {
   /* Handles of touch sensor */
   touch_sensor_handle_t sens_handle{};
@@ -124,22 +127,22 @@ esp_err_t App::init_touch_wakeup() noexcept {
   {
     /* Register callback for resetting the timeout timer */
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-    touch_event_callbacks_t callbacks = {
-        .on_active = [](touch_sensor_handle_t sens_handle,
-                        const touch_active_event_data_t *event,
-                        void *user_ctx) -> bool {
-          const App &self = *static_cast<App *>(user_ctx);
-          ESP_EARLY_LOGI(
-              log_tag, "Touch channel %d activated, resetting timeout timer...",
-              event->chan_id);
-          ESP_ERROR_CHECK(esp_timer_stop(self.timeout_timer_handle_));
-          ESP_ERROR_CHECK(esp_timer_start_once(
-              self.timeout_timer_handle_, constants::app::timeout_period_us));
-          return false;
-        }};
-#pragma GCC diagnostic pop
+    const touch_event_callbacks_t callbacks = [] {
+      touch_event_callbacks_t callbacks{};
+      callbacks.on_active = [](touch_sensor_handle_t sens_handle,
+                               const touch_active_event_data_t *event,
+                               void *user_ctx) -> bool {
+        const App &self = *static_cast<App *>(user_ctx);
+        ESP_EARLY_LOGI(log_tag,
+                       "Touch channel %d activated, resetting timeout timer...",
+                       event->chan_id);
+        ESP_ERROR_CHECK(esp_timer_stop(self.timeout_timer_handle_));
+        ESP_ERROR_CHECK(esp_timer_start_once(
+            self.timeout_timer_handle_, constants::app::timeout_period_us));
+        return false;
+      };
+      return callbacks;
+    }();
 
     ESP_RETURN_ON_ERROR(
         touch_sensor_register_callbacks(sens_handle, &callbacks, this), log_tag,
@@ -182,29 +185,6 @@ esp_err_t App::init_touch_wakeup() noexcept {
   return ESP_OK;
 }
 
-void App::sleep_timeout_timer_cb(void *arg) noexcept {
-  App &self = *static_cast<App *>(arg);
-
-  ESP_LOGI(log_tag, "timeout!");
-
-  ESP_ERROR_CHECK(esp_event_post_to(self.main_event_loop_handle_, APP_EVENTS,
-                                    APP_EVENT_SLEEP_TIMEOUT, nullptr, 0,
-                                    portMAX_DELAY));
-}
-
-void App::sleep_timeout_handler(void *event_handler_arg,
-                                esp_event_base_t event_base, int32_t event_id,
-                                void *event_data) noexcept {
-  ESP_LOGI(log_tag, "Received sleep timeout event in main event "
-                    "loop, entering deep sleep...");
-  ESP_LOGI(constants::app::log_tag, "Entering deep sleep...");
-
-  ESP_ERROR_CHECK(uart_wait_tx_idle_polling(
-      static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)));
-
-  esp_deep_sleep_start();
-}
-
 esp_err_t App::init() noexcept {
   if (initialized_) {
     ESP_LOGW(log_tag, "App already initialized");
@@ -232,19 +212,16 @@ esp_err_t App::init() noexcept {
 }
 
 esp_err_t App::init_timeout_timer() noexcept {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-  const esp_timer_create_args_t timer_args = {
-      .callback =
-          [](void *arg) {
-            App &self = *static_cast<App *>(arg);
-            ESP_ERROR_CHECK(self.signal_timeout());
-          },
-      .arg = this,
-      .dispatch_method = ESP_TIMER_TASK,
-      .name = "main_timeout_timer",
-  };
-#pragma GCC diagnostic pop
+  const esp_timer_create_args_t timer_args = [this] {
+    esp_timer_create_args_t timer_args{};
+
+    timer_args.callback = App::sleep_timeout_timer_cb;
+    timer_args.arg = this;
+    timer_args.dispatch_method = ESP_TIMER_TASK;
+    timer_args.name = "main_timeout_timer";
+
+    return timer_args;
+  }();
 
   ESP_RETURN_ON_ERROR(esp_timer_create(&timer_args, &timeout_timer_handle_),
                       log_tag, "Failed to create timeout timer");
@@ -270,26 +247,17 @@ esp_err_t App::init_main_event_loop() noexcept {
       esp_event_loop_create(&loop_args, &main_event_loop_handle_), log_tag,
       "Failed to create main event loop");
 
-  // TODO: Handle more events through this event handler instead of running the
-  // code directly in the callbacks. The callbacks should only post events to
-  // this event loop
   ESP_RETURN_ON_ERROR(
       esp_event_handler_instance_register_with(
-          main_event_loop_handle_, APP_EVENTS, APP_EVENT_TIMEOUT,
-          [](void *arg, esp_event_base_t event_base, int32_t event_id,
-             void *event_data) {
-            ESP_LOGI(log_tag, "Received timeout event in main event "
-                              "loop, entering deep sleep...");
-            ESP_LOGI(constants::app::log_tag, "Entering deep sleep...");
-
-            std::fflush(stdout);
-            ESP_ERROR_CHECK(uart_wait_tx_idle_polling(
-                static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)));
-
-            esp_deep_sleep_start();
-          },
-          nullptr, nullptr),
+          main_event_loop_handle_, APP_EVENTS, APP_EVENT_SLEEP_TIMEOUT,
+          App::sleep_timeout_handler, nullptr, nullptr),
       log_tag, "Failed to register timeout event handler for main event loop");
+  ESP_RETURN_ON_ERROR(
+      esp_event_handler_instance_register_with(
+          main_event_loop_handle_, APP_EVENTS, APP_EVENT_ESPNOW_RECV,
+          App::espnow_recv_handler, nullptr, nullptr),
+      log_tag,
+      "Failed to register ESP-NOW receive event handler for main event loop");
 
   return ESP_OK;
 }
@@ -354,13 +322,13 @@ esp_err_t App::init_speed_inactivity_timer() noexcept {
   return ESP_OK;
 }
 
-void App::speed_inactivity_timer_cb(void *arg) {
+void App::speed_inactivity_timer_cb(void *arg) noexcept {
   App &self = *static_cast<App *>(arg);
   self.ride_metrics_.reset_speed();
 }
 
 void App::espnow_recv_cb(const esp_now_recv_info_t *recv_info,
-                         const uint8_t *data, int data_len) {
+                         const uint8_t *data, int data_len) noexcept {
   if (data_len != sizeof(BikePacket)) {
     ESP_LOGW(log_tag, "Received ESP-NOW packet with invalid length: %d",
              data_len);
@@ -369,12 +337,22 @@ void App::espnow_recv_cb(const esp_now_recv_info_t *recv_info,
 
   App &app = App::get_instance();
 
+  ESP_ERROR_CHECK(esp_event_post_to(app.main_event_loop_handle_, APP_EVENTS,
+                                    APP_EVENT_ESPNOW_RECV, (void *)data,
+                                    data_len, portMAX_DELAY));
+}
+
+void App::espnow_recv_handler(void *event_handler_arg,
+                              esp_event_base_t event_base, int32_t event_id,
+                              void *event_data) noexcept {
+
+  App &app = App::get_instance();
+
   BikePacket packet{};
-  memcpy(&packet, data, sizeof(BikePacket));
-  ESP_LOGI(
-      log_tag,
-      "Received ESP-NOW packet from " MACSTR ": seq_num=%u, sample_count=%u",
-      MAC2STR(recv_info->src_addr), packet.seq_num, packet.periods_buf_len);
+  memcpy(&packet, event_data, sizeof(BikePacket));
+
+  ESP_LOGI(log_tag, "Received ESP-NOW packet: seq_num=%u, sample_count=%u",
+           packet.seq_num, packet.periods_buf_len);
 
   if (packet.seq_num <= app.last_packet_seq_num_) {
     ESP_LOGW(log_tag,
@@ -400,6 +378,26 @@ void App::espnow_recv_cb(const esp_now_recv_info_t *recv_info,
   ESP_ERROR_CHECK(esp_timer_start_once(
       app.speed_inactivity_timer_handle_,
       constants::app::ride_metrics::speed_inactivity_timeout_us));
+}
+
+void App::sleep_timeout_timer_cb(void *arg) noexcept {
+  App &self = *static_cast<App *>(arg);
+
+  ESP_ERROR_CHECK(esp_event_post_to(self.main_event_loop_handle_, APP_EVENTS,
+                                    APP_EVENT_SLEEP_TIMEOUT, nullptr, 0,
+                                    portMAX_DELAY));
+}
+
+void App::sleep_timeout_handler(void *event_handler_arg,
+                                esp_event_base_t event_base, int32_t event_id,
+                                void *event_data) noexcept {
+  ESP_LOGI(log_tag, "Received sleep timeout event in main event "
+                    "loop, entering deep sleep...");
+
+  ESP_ERROR_CHECK(uart_wait_tx_idle_polling(
+      static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)));
+
+  esp_deep_sleep_start();
 }
 
 } // namespace app
