@@ -22,7 +22,7 @@ constexpr inline touch_channel_config_t default_chan_cfg = {
     .init_charge_volt = TOUCH_INIT_CHARGE_VOLT_DEFAULT,
 };
 
-constexpr inline int channel_id{1};
+constexpr inline uint32_t channel_id{1};
 constexpr inline size_t channel_init_scan_times{3};
 
 // Active threshold to benchmark ratio. (i.e., touch will be activated when data
@@ -32,8 +32,8 @@ constexpr inline float thresh_ratio{0.02f}; // 2%
 } // namespace touch
 
 namespace lcd {
-constexpr inline int hres{240};
-constexpr inline int vres{320};
+constexpr inline uint32_t hres{240};
+constexpr inline uint32_t vres{320};
 constexpr inline uint32_t color_depth{16};
 constexpr inline uint32_t pclk_hz{40 * 1000 * 1000};
 constexpr inline bool mirror_x{false};
