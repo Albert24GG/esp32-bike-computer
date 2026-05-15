@@ -182,54 +182,52 @@ esp_err_t App::init_touch_wakeup() noexcept {
   return ESP_OK;
 }
 
-ESP_EVENT_DEFINE_BASE(APP_EVENTS);
+void App::sleep_timeout_timer_cb(void *arg) noexcept {
+  App &self = *static_cast<App *>(arg);
 
-esp_err_t App::signal_timeout() noexcept {
   ESP_LOGI(log_tag, "timeout!");
 
-  ESP_RETURN_ON_ERROR(esp_event_post_to(main_event_loop_handle_, APP_EVENTS,
-                                        APP_EVENT_TIMEOUT, nullptr, 0,
-                                        portMAX_DELAY),
-                      log_tag, "Failed to post timeout event");
+  ESP_ERROR_CHECK(esp_event_post_to(self.main_event_loop_handle_, APP_EVENTS,
+                                    APP_EVENT_SLEEP_TIMEOUT, nullptr, 0,
+                                    portMAX_DELAY));
+}
 
-  return ESP_OK;
+void App::sleep_timeout_handler(void *event_handler_arg,
+                                esp_event_base_t event_base, int32_t event_id,
+                                void *event_data) noexcept {
+  ESP_LOGI(log_tag, "Received sleep timeout event in main event "
+                    "loop, entering deep sleep...");
+  ESP_LOGI(constants::app::log_tag, "Entering deep sleep...");
+
+  ESP_ERROR_CHECK(uart_wait_tx_idle_polling(
+      static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)));
+
+  esp_deep_sleep_start();
 }
 
 esp_err_t App::init() noexcept {
-
-  ESP_LOGI(log_tag, "Initializing app...");
   if (initialized_) {
     ESP_LOGW(log_tag, "App already initialized");
     return ESP_OK;
   }
 
-  ESP_LOGI(log_tag, "Initializing main event loop...");
+  ESP_LOGI(log_tag, "Initializing app...");
 
   ESP_RETURN_ON_ERROR(init_main_event_loop(), log_tag,
                       "Failed to initialize main event loop");
-  ESP_LOGI(log_tag, "Initializing touch wakeup source...");
-
   ESP_RETURN_ON_ERROR(init_touch_wakeup(), log_tag,
                       "Failed to initialize touch wakeup source");
-  ESP_LOGI(log_tag, "Initializing WiFi and ESP-NOW...");
   ESP_RETURN_ON_ERROR(init_wifi(), log_tag, "Failed to initialize WiFi");
-  ESP_LOGI(log_tag, "Initializing ESP-NOW...");
   ESP_RETURN_ON_ERROR(init_espnow(), log_tag, "Failed to initialize ESP-NOW");
-  ESP_LOGI(log_tag, "Initializing timeout timer...");
   ESP_RETURN_ON_ERROR(init_timeout_timer(), log_tag,
                       "Failed to initialize timeout timer");
-  ESP_LOGI(log_tag, "Initializing speed inactivity timer...");
   ESP_RETURN_ON_ERROR(init_speed_inactivity_timer(), log_tag,
                       "Failed to initialize speed inactivity timer");
 
-  ESP_LOGI(log_tag, "App initialization complete");
   initialized_ = true;
-  ESP_LOGI(log_tag,
-           "initialized=%d, timeout_timer_handle=%p, "
-           "speed_inactivity_timer_handle=%p",
-           initialized_, timeout_timer_handle_, speed_inactivity_timer_handle_);
-  ESP_LOGI(log_tag, "core = %d, app_ptr = %p", xPortGetCoreID(),
-           &App::get_instance());
+
+  ESP_LOGI(log_tag, "App initialized successfully");
+
   return ESP_OK;
 }
 
