@@ -351,13 +351,13 @@ void App::espnow_recv_handler(void *event_handler_arg,
   BikePacket packet{};
   memcpy(&packet, event_data, sizeof(BikePacket));
 
-  ESP_LOGI(log_tag, "Received ESP-NOW packet: seq_num=%u, sample_count=%u",
+  ESP_LOGI(log_tag, "Received ESP-NOW packet: seq_num=%llu, sample_count=%u",
            packet.seq_num, packet.periods_buf_len);
 
   if (packet.seq_num <= app.last_packet_seq_num_) {
     ESP_LOGW(log_tag,
-             "Received out-of-order or duplicate packet: seq_num=%u, "
-             "last_seq_num=%u",
+             "Received out-of-order or duplicate packet: seq_num=%llu, "
+             "last_seq_num=%llu",
              packet.seq_num, app.last_packet_seq_num_);
     return;
   }
