@@ -36,8 +36,8 @@ constexpr inline uint32_t hres{240};
 constexpr inline uint32_t vres{320};
 constexpr inline uint32_t color_depth{16};
 constexpr inline uint32_t pclk_hz{40 * 1000 * 1000};
-constexpr inline bool mirror_x{false};
-constexpr inline bool mirror_y{true};
+constexpr inline bool mirror_x{true};
+constexpr inline bool mirror_y{false};
 constexpr inline bool swap_xy{false};
 constexpr inline bool invert_color{false};
 } // namespace lcd

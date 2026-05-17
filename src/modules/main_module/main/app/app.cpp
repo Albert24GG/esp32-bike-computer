@@ -19,6 +19,7 @@
 #include "esp_wifi.h"
 #include "nvs_flash.h"
 #include "rom/ets_sys.h"
+#include "ui.h"
 
 #include <cstdint>
 #include <ranges>
@@ -276,8 +277,9 @@ esp_err_t App::init() noexcept {
                       "Failed to initialize speed inactivity timer");
   ESP_RETURN_ON_ERROR(init_hardware(), log_tag,
                       "Failed to initialize hardware");
-  ESP_RETURN_ON_ERROR(create_demo_ui(lvgl_), log_tag,
-                      "Failed to create demo UI");
+  // ESP_RETURN_ON_ERROR(create_demo_ui(lvgl_), log_tag,
+  //                     "Failed to create demo UI");
+  ui_init();
 
   initialized_ = true;
 

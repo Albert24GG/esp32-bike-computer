@@ -1,0 +1,19 @@
+idf_component_register(
+    SRCS 
+        "ui.c"
+        "ui_helpers.c"
+        "ui_themes.c"
+        "ui_theme_manager.c"
+        "components/ui_comp.c"
+        "components/ui_comp_btn.c"
+        "components/ui_comp_hook.c"
+        "screens/ui_ScreenMetrics.c"
+        "screens/ui_ScreenMaps.c"
+        "screens/ui_ScreenSettings.c"
+    INCLUDE_DIRS 
+        "." 
+        "components" 
+        "screens"
+    REQUIRES 
+        lvgl
+)

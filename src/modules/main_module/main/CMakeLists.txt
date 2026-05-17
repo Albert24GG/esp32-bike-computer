@@ -14,4 +14,7 @@ idf_component_register(SRC_DIRS "." "app/" "hardware/"
                         sdmmc
                         nvs_flash
                         esp_wifi
-                    INCLUDE_DIRS ".")
+                        ui
+                    INCLUDE_DIRS "."
+                    WHOLE_ARCHIVE
+                    )
