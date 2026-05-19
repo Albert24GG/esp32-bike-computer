@@ -27,78 +27,6 @@
 constexpr auto &log_tag = constants::app::log_tag;
 
 namespace {
-
-lv_obj_t *speed_label; // Global pointer to the speed label for updating in the
-                       // main loop
-esp_err_t create_demo_ui(app::graphics::LvglPort &lvgl) {
-  lvgl.lock();
-
-  auto *screen = lv_scr_act();
-
-  auto *title = lv_label_create(screen);
-  lv_label_set_text(title, "ILI9341 + XPT2046 + SD\nESP-IDF + LVGL");
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
-
-  auto *status = lv_label_create(screen);
-  lv_label_set_text(status, "Touch the button");
-  lv_obj_align(status, LV_ALIGN_CENTER, 0, -20);
-
-  speed_label = lv_label_create(screen);
-  lv_label_set_text(speed_label, "Speed: 0 km/h");
-  lv_obj_align(speed_label, LV_ALIGN_CENTER, 0, 20);
-
-  auto *btn = lv_button_create(screen);
-  lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -35);
-
-  auto *btn_label = lv_label_create(btn);
-  lv_label_set_text(btn_label, "Touch me");
-  lv_obj_center(btn_label);
-
-  lv_obj_add_event_cb(
-      btn,
-      [](lv_event_t *event) {
-        auto *status_label =
-            static_cast<lv_obj_t *>(lv_event_get_user_data(event));
-
-        static int touch_count = 0;
-        ++touch_count;
-
-        lv_label_set_text_fmt(status_label, "Button touched: %d", touch_count);
-        ESP_LOGI("demo_ui", "Button touched: %d", touch_count);
-      },
-      LV_EVENT_CLICKED, status);
-
-  lvgl.unlock();
-
-  struct SpeedUpdateData {
-    lv_obj_t *label;
-    float speed;
-  };
-  xTaskCreate(
-      [](void *) {
-        app::App &app = app::App::get_instance();
-        while (true) {
-          vTaskDelay(pdMS_TO_TICKS(500));
-
-          float speed = app.get_current_speed_kmph();
-
-          // Heap-allocate so it survives until the callback fires
-          auto *data = new SpeedUpdateData{speed_label, speed};
-
-          lv_async_call(
-              [](void *arg) {
-                auto *d = static_cast<SpeedUpdateData *>(arg);
-                lv_label_set_text_fmt(d->label, "Speed: %.1f km/h", d->speed);
-                delete d;
-              },
-              data);
-        }
-      },
-      "speed_update_task", 2048, nullptr, 5, nullptr);
-
-  return ESP_OK;
-}
-
 esp_err_t touch_initial_calibration(touch_sensor_handle_t sens_handle,
                                     touch_channel_handle_t chan_handle) {
   /* Enable the touch sensor to do the initial scanning, so that to initialize
@@ -277,8 +205,6 @@ esp_err_t App::init() noexcept {
                       "Failed to initialize speed inactivity timer");
   ESP_RETURN_ON_ERROR(init_hardware(), log_tag,
                       "Failed to initialize hardware");
-  // ESP_RETURN_ON_ERROR(create_demo_ui(lvgl_), log_tag,
-  //                     "Failed to create demo UI");
   ui_init();
 
   initialized_ = true;

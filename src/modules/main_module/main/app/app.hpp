@@ -32,13 +32,6 @@ public:
 
   [[nodiscard]] esp_err_t init() noexcept;
 
-  // [[nodiscard]] esp_err_t signal_timeout() noexcept;
-
-  // TEST ONLY
-  float get_current_speed_kmph() const noexcept {
-    return ride_metrics_.get_current_speed_kmph();
-  }
-
 private:
   App() = default;
 
