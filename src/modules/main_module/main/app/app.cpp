@@ -2,6 +2,7 @@
 
 #include "../../../common/espnow_packet.hpp"
 #include "constants/app_config.hpp"
+#include "ui_presenter.hpp"
 #include "utils.hpp"
 
 #include "driver/touch_sens.h"
@@ -17,11 +18,13 @@
 #include "esp_sleep.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
-#include "nvs_flash.h"
 #include "rom/ets_sys.h"
 #include "ui.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <mutex>
 #include <ranges>
 
 constexpr auto &log_tag = constants::app::log_tag;
@@ -132,13 +135,11 @@ esp_err_t App::init_touch_wakeup() noexcept {
       callbacks.on_active = [](touch_sensor_handle_t sens_handle,
                                const touch_active_event_data_t *event,
                                void *user_ctx) -> bool {
-        const App &self = *static_cast<App *>(user_ctx);
+        App &self = *static_cast<App *>(user_ctx);
         ESP_EARLY_LOGI(log_tag,
                        "Touch channel %d activated, resetting timeout timer...",
                        event->chan_id);
-        ESP_ERROR_CHECK(esp_timer_stop(self.timeout_timer_handle_));
-        ESP_ERROR_CHECK(esp_timer_start_once(
-            self.timeout_timer_handle_, constants::app::timeout_period_us));
+        self.reset_sleep_timeout();
         return false;
       };
       return callbacks;
@@ -195,21 +196,47 @@ esp_err_t App::init() noexcept {
 
   ESP_RETURN_ON_ERROR(init_main_event_loop(), log_tag,
                       "Failed to initialize main event loop");
+  ESP_RETURN_ON_ERROR(init_storage(), log_tag, "Failed to initialize storage");
+  ESP_RETURN_ON_ERROR(init_timeout_timer(), log_tag,
+                      "Failed to initialize timeout timer");
+  ESP_RETURN_ON_ERROR(init_persistence_timer(), log_tag,
+                      "Failed to initialize persistence timer");
   ESP_RETURN_ON_ERROR(init_touch_wakeup(), log_tag,
                       "Failed to initialize touch wakeup source");
   ESP_RETURN_ON_ERROR(init_wifi(), log_tag, "Failed to initialize WiFi");
   ESP_RETURN_ON_ERROR(init_espnow(), log_tag, "Failed to initialize ESP-NOW");
-  ESP_RETURN_ON_ERROR(init_timeout_timer(), log_tag,
-                      "Failed to initialize timeout timer");
   ESP_RETURN_ON_ERROR(init_speed_inactivity_timer(), log_tag,
                       "Failed to initialize speed inactivity timer");
   ESP_RETURN_ON_ERROR(init_hardware(), log_tag,
                       "Failed to initialize hardware");
-  ui_init();
+  ESP_RETURN_ON_ERROR(init_ui(), log_tag, "Failed to initialize UI");
+  ESP_RETURN_ON_ERROR(init_ui_update_task(), log_tag,
+                      "Failed to initialize UI update task");
 
   initialized_ = true;
 
   ESP_LOGI(log_tag, "App initialized successfully");
+
+  return ESP_OK;
+}
+
+esp_err_t App::init_storage() noexcept {
+  ESP_RETURN_ON_ERROR(persistent_store_.init(), log_tag,
+                      "Failed to initialize persistent store");
+
+  Settings loaded_settings{};
+  ESP_RETURN_ON_ERROR(persistent_store_.load_settings(loaded_settings), log_tag,
+                      "Failed to load settings");
+  settings_ = normalize_settings(loaded_settings);
+
+  ESP_RETURN_ON_ERROR(persistent_store_.load_ride_state(loaded_ride_state_),
+                      log_tag, "Failed to load ride state");
+  ride_metrics_.restore(to_ride_initial_state(loaded_ride_state_));
+  ride_metrics_.set_wheel_circumference_mm(settings_.wheel_circumference_mm);
+  last_wheel_cumulative_rotations_ =
+      loaded_ride_state_.wheel_cumulative_rotations;
+  last_wheel_cumulative_ride_time_us_ =
+      loaded_ride_state_.wheel_cumulative_ride_time_us;
 
   return ESP_OK;
 }
@@ -228,9 +255,25 @@ esp_err_t App::init_timeout_timer() noexcept {
 
   ESP_RETURN_ON_ERROR(esp_timer_create(&timer_args, &timeout_timer_handle_),
                       log_tag, "Failed to create timeout timer");
-  ESP_RETURN_ON_ERROR(esp_timer_start_once(timeout_timer_handle_,
-                                           constants::app::timeout_period_us),
-                      log_tag, "Failed to start timeout timer");
+  reset_sleep_timeout();
+
+  return ESP_OK;
+}
+
+esp_err_t App::init_persistence_timer() noexcept {
+  esp_timer_create_args_t timer_args{};
+  timer_args.callback = App::persistence_timer_cb;
+  timer_args.arg = this;
+  timer_args.dispatch_method = ESP_TIMER_TASK;
+  timer_args.name = "persistence_timer";
+
+  ESP_RETURN_ON_ERROR(esp_timer_create(&timer_args, &persistence_timer_handle_),
+                      log_tag, "Failed to create persistence timer");
+  ESP_RETURN_ON_ERROR(
+      esp_timer_start_periodic(
+          persistence_timer_handle_,
+          constants::app::persistence::ride_save_interval_us),
+      log_tag, "Failed to start persistence timer");
 
   return ESP_OK;
 }
@@ -266,17 +309,6 @@ esp_err_t App::init_main_event_loop() noexcept {
 }
 
 esp_err_t App::init_wifi() noexcept {
-  {
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_RETURN_ON_ERROR(nvs_flash_erase(), log_tag, "nvs erase failed");
-      ESP_RETURN_ON_ERROR(nvs_flash_init(), log_tag, "nvs init failed");
-    } else {
-      ESP_RETURN_ON_ERROR(ret, log_tag, "nvs init failed");
-    }
-  }
-
   ESP_RETURN_ON_ERROR(esp_netif_init(), log_tag, "esp_netif_init failed");
   ESP_RETURN_ON_ERROR(esp_event_loop_create_default(), log_tag,
                       "event loop create failed");
@@ -349,12 +381,207 @@ esp_err_t App::init_hardware() noexcept {
   ESP_RETURN_ON_ERROR(hardware_.touch.init(), log_tag, "touch init failed");
   ESP_RETURN_ON_ERROR(lvgl_.add_touch(hardware_.touch), log_tag,
                       "LVGL touch add failed");
+  if (hardware_.touch.indev() != nullptr) {
+    lv_indev_add_event_cb(hardware_.touch.indev(), App::lvgl_input_event_cb,
+                          LV_EVENT_PRESSED, this);
+  }
+
+  ESP_RETURN_ON_ERROR(
+      hardware_.lcd.set_backlight_brightness(settings_.brightness_percent),
+      log_tag, "backlight brightness setup failed");
 
   return ESP_OK;
 }
 
+esp_err_t App::init_ui() noexcept {
+  lvgl_.lock();
+  ui_init();
+  ui_presenter::write_settings(settings_);
+  refresh_ui_unlocked();
+  lvgl_.unlock();
+
+  return ESP_OK;
+}
+
+esp_err_t App::init_ui_update_task() noexcept {
+  using namespace constants::app::tasks::ui;
+
+  const BaseType_t result = xTaskCreatePinnedToCore(
+      App::ui_update_task, task_name, task_stack_size, this, task_priority,
+      &ui_update_task_handle_, task_core_id);
+  ESP_RETURN_ON_FALSE(result == pdPASS, ESP_FAIL, log_tag,
+                      "Failed to create UI update task");
+
+  return ESP_OK;
+}
+
+void App::reset_sleep_timeout() noexcept {
+  if (timeout_timer_handle_ == nullptr) {
+    return;
+  }
+
+  uint16_t sleep_timeout_s{};
+  {
+    std::lock_guard lock(state_mutex_);
+    sleep_timeout_s = settings_.sleep_timeout_s;
+  }
+
+  const esp_err_t stop_err = esp_timer_stop(timeout_timer_handle_);
+  if (stop_err != ESP_OK && stop_err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(log_tag, "Failed to stop sleep timeout timer: %s",
+             esp_err_to_name(stop_err));
+  }
+
+  const uint64_t timeout_us =
+      static_cast<uint64_t>(sleep_timeout_s) * 1'000'000ULL;
+  const esp_err_t start_err =
+      esp_timer_start_once(timeout_timer_handle_, timeout_us);
+  if (start_err != ESP_OK) {
+    ESP_LOGW(log_tag, "Failed to start sleep timeout timer: %s",
+             esp_err_to_name(start_err));
+  }
+}
+
+PersistentRideState App::persistent_ride_state_unlocked() const noexcept {
+  const auto snapshot = ride_metrics_.snapshot();
+  return {
+      .trip_distance_mm = snapshot.trip_distance_mm,
+      .trip_time_us = snapshot.trip_time_us,
+      .total_distance_mm = snapshot.total_distance_mm,
+      .wheel_cumulative_rotations = last_wheel_cumulative_rotations_,
+      .wheel_cumulative_ride_time_us = last_wheel_cumulative_ride_time_us_,
+  };
+}
+
+void App::save_ride_state_if_needed(bool force) noexcept {
+  PersistentRideState state{};
+  uint64_t saved_distance_budget = 0;
+  uint64_t saved_time_budget = 0;
+
+  {
+    std::lock_guard lock(state_mutex_);
+    if (!ride_state_dirty_) {
+      return;
+    }
+
+    if (!force &&
+        unsaved_distance_mm_ <
+            constants::app::persistence::ride_save_distance_threshold_mm &&
+        unsaved_ride_time_us_ <
+            constants::app::persistence::ride_save_interval_us) {
+      return;
+    }
+
+    state = persistent_ride_state_unlocked();
+    saved_distance_budget = unsaved_distance_mm_;
+    saved_time_budget = unsaved_ride_time_us_;
+  }
+
+  const esp_err_t err = persistent_store_.save_ride_state(state);
+  if (err != ESP_OK) {
+    ESP_LOGE(log_tag, "Failed to save ride state: %s", esp_err_to_name(err));
+    return;
+  }
+
+  {
+    std::lock_guard lock(state_mutex_);
+    unsaved_distance_mm_ =
+        unsaved_distance_mm_ > saved_distance_budget
+            ? unsaved_distance_mm_ - saved_distance_budget
+            : 0;
+    unsaved_ride_time_us_ =
+        unsaved_ride_time_us_ > saved_time_budget
+            ? unsaved_ride_time_us_ - saved_time_budget
+            : 0;
+    ride_state_dirty_ = unsaved_distance_mm_ > 0 || unsaved_ride_time_us_ > 0;
+  }
+}
+
+void App::apply_settings(const Settings &settings) noexcept {
+  const Settings normalized = normalize_settings(settings);
+  Settings previous{};
+
+  {
+    std::lock_guard lock(state_mutex_);
+    previous = settings_;
+    settings_ = normalized;
+    ride_metrics_.set_wheel_circumference_mm(
+        normalized.wheel_circumference_mm);
+  }
+
+  if (previous.brightness_percent != normalized.brightness_percent) {
+    const esp_err_t err =
+        hardware_.lcd.set_backlight_brightness(normalized.brightness_percent);
+    if (err != ESP_OK) {
+      ESP_LOGE(log_tag, "Failed to apply brightness: %s",
+               esp_err_to_name(err));
+    }
+  }
+
+  if (previous.sleep_timeout_s != normalized.sleep_timeout_s) {
+    reset_sleep_timeout();
+  }
+
+  if (previous != normalized) {
+    const esp_err_t err = persistent_store_.save_settings(normalized);
+    if (err != ESP_OK) {
+      ESP_LOGE(log_tag, "Failed to save settings: %s", esp_err_to_name(err));
+    }
+  }
+}
+
+void App::refresh_ui_unlocked() noexcept {
+  ride_metrics::RideMetrics::Snapshot snapshot{};
+  Settings settings{};
+
+  {
+    std::lock_guard lock(state_mutex_);
+    snapshot = ride_metrics_.snapshot();
+    settings = settings_;
+  }
+
+  ui_presenter::write_metrics(snapshot, settings);
+}
+
+void App::refresh_ui_from_task() noexcept {
+  lvgl_.lock();
+  refresh_ui_unlocked();
+  lvgl_.unlock();
+}
+
+void App::on_reset_trip() noexcept {
+  {
+    std::lock_guard lock(state_mutex_);
+    ride_metrics_.reset_trip();
+    ride_state_dirty_ = true;
+  }
+
+  save_ride_state_if_needed(true);
+  refresh_ui_unlocked();
+  reset_sleep_timeout();
+}
+
+void App::on_exit_screen_settings() noexcept {
+  Settings fallback{};
+  {
+    std::lock_guard lock(state_mutex_);
+    fallback = settings_;
+  }
+
+  apply_settings(ui_presenter::read_settings(fallback));
+  Settings updated{};
+  {
+    std::lock_guard lock(state_mutex_);
+    updated = settings_;
+  }
+  ui_presenter::write_settings(updated);
+  refresh_ui_unlocked();
+  reset_sleep_timeout();
+}
+
 void App::speed_inactivity_timer_cb(void *arg) noexcept {
   App &self = *static_cast<App *>(arg);
+  std::lock_guard lock(self.state_mutex_);
   self.ride_metrics_.reset_speed();
 }
 
@@ -385,6 +612,12 @@ void App::espnow_recv_handler(void *event_handler_arg,
   ESP_LOGI(log_tag, "Received ESP-NOW packet: seq_num=%llu, sample_count=%u",
            packet.seq_num, packet.periods_buf_len);
 
+  if (packet.periods_buf_len > max_periods_per_packet) {
+    ESP_LOGW(log_tag, "Received ESP-NOW packet with invalid sample count: %u",
+             packet.periods_buf_len);
+    return;
+  }
+
   if (packet.seq_num <= app.last_packet_seq_num_) {
     ESP_LOGW(log_tag,
              "Received out-of-order or duplicate packet: seq_num=%llu, "
@@ -395,10 +628,51 @@ void App::espnow_recv_handler(void *event_handler_arg,
 
   app.last_packet_seq_num_ = packet.seq_num;
 
-  for (uint8_t i : std::views::iota(uint8_t{0}, packet.periods_buf_len)) {
-    const uint64_t period_us = packet.periods_buf_us[i];
-    app.ride_metrics_.register_wheel_rotation(period_us);
+  {
+    std::lock_guard lock(app.state_mutex_);
+
+    const bool wheel_counter_reset =
+        packet.cumulative_rotations < app.last_wheel_cumulative_rotations_ ||
+        packet.cumulative_ride_time_us <
+            app.last_wheel_cumulative_ride_time_us_;
+
+    const uint64_t rotation_delta =
+        wheel_counter_reset
+            ? packet.cumulative_rotations
+            : packet.cumulative_rotations -
+                  app.last_wheel_cumulative_rotations_;
+    const uint64_t ride_time_delta_us =
+        wheel_counter_reset
+            ? packet.cumulative_ride_time_us
+            : packet.cumulative_ride_time_us -
+                  app.last_wheel_cumulative_ride_time_us_;
+
+    if (wheel_counter_reset) {
+      ESP_LOGW(log_tag,
+               "Wheel cumulative counters reset; using packet counters as new "
+               "delta baseline");
+    }
+
+    uint64_t recent_periods_us[max_periods_per_packet]{};
+    memcpy(recent_periods_us, packet.periods_buf_us,
+           packet.periods_buf_len * sizeof(recent_periods_us[0]));
+
+    app.ride_metrics_.register_wheel_update(
+        rotation_delta, ride_time_delta_us, recent_periods_us,
+        packet.periods_buf_len);
+    app.last_wheel_cumulative_rotations_ = packet.cumulative_rotations;
+    app.last_wheel_cumulative_ride_time_us_ =
+        packet.cumulative_ride_time_us;
+    app.unsaved_distance_mm_ +=
+        rotation_delta *
+        static_cast<uint64_t>(app.settings_.wheel_circumference_mm);
+    app.unsaved_ride_time_us_ += ride_time_delta_us;
+    app.ride_state_dirty_ =
+        app.ride_state_dirty_ || rotation_delta > 0 || ride_time_delta_us > 0;
   }
+
+  app.save_ride_state_if_needed(false);
+  app.reset_sleep_timeout();
 
   // Reset the speed inactivity timer
   esp_err_t err = esp_timer_stop(app.speed_inactivity_timer_handle_);
@@ -419,11 +693,33 @@ void App::sleep_timeout_timer_cb(void *arg) noexcept {
                                     portMAX_DELAY));
 }
 
+void App::persistence_timer_cb(void *arg) noexcept {
+  App &self = *static_cast<App *>(arg);
+  self.save_ride_state_if_needed(false);
+}
+
+void App::ui_update_task(void *arg) noexcept {
+  App &self = *static_cast<App *>(arg);
+
+  while (true) {
+    self.refresh_ui_from_task();
+    vTaskDelay(pdMS_TO_TICKS(
+        constants::app::tasks::ui::update_period.count()));
+  }
+}
+
+void App::lvgl_input_event_cb(lv_event_t *event) noexcept {
+  App &self = *static_cast<App *>(lv_event_get_user_data(event));
+  self.reset_sleep_timeout();
+}
+
 void App::sleep_timeout_handler(void *event_handler_arg,
                                 esp_event_base_t event_base, int32_t event_id,
                                 void *event_data) noexcept {
   ESP_LOGI(log_tag, "Received sleep timeout event in main event "
                     "loop, entering deep sleep...");
+
+  App::get_instance().save_ride_state_if_needed(true);
 
   ESP_ERROR_CHECK(uart_wait_tx_idle_polling(
       static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)));

@@ -30,6 +30,8 @@ extern const uint8_t ulp_main_bin_end[] asm("_binary_ulp_main_bin_end");
 static RTC_DATA_ATTR size_t wakeup_cnt_since_recalibration = 0;
 static RTC_DATA_ATTR uint64_t packet_seq = 1;
 static RTC_DATA_ATTR uint32_t slowclk_cal_value = esp_clk_slowclk_cal_get();
+static RTC_DATA_ATTR uint64_t cumulative_rotations = 0;
+static RTC_DATA_ATTR uint64_t cumulative_ride_time_us = 0;
 
 static uint64_t *shared_periods_buf =
     reinterpret_cast<uint64_t *>(ulp_shared_periods_buf);
@@ -239,12 +241,22 @@ static void send_packet(const uint64_t *periods_us, size_t periods_len) {
   memcpy(packet.periods_buf_us, periods_us,
          packet.periods_buf_len * sizeof(packet.periods_buf_us[0]));
 
+  for (size_t i = 0; i < packet.periods_buf_len; ++i) {
+    cumulative_ride_time_us += packet.periods_buf_us[i];
+  }
+  cumulative_rotations += packet.periods_buf_len;
+  packet.cumulative_rotations = cumulative_rotations;
+  packet.cumulative_ride_time_us = cumulative_ride_time_us;
+
   ESP_ERROR_CHECK(esp_now_send(DEST_MAC_ADDR.data(),
                                reinterpret_cast<const uint8_t *>(&packet),
                                sizeof(packet)));
 
-  ESP_LOGI(TAG, "Sent packet with seq_num %llu and %u wheel periods",
-           packet.seq_num, packet.periods_buf_len);
+  ESP_LOGI(TAG,
+           "Sent packet with seq_num %llu, %u wheel periods, cumulative "
+           "rotations=%llu, cumulative ride time=%llu us",
+           packet.seq_num, packet.periods_buf_len,
+           packet.cumulative_rotations, packet.cumulative_ride_time_us);
 }
 
 static void recalibrate_slow_clock() {

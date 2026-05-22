@@ -38,6 +38,8 @@ public:
 
   [[nodiscard]] esp_lcd_touch_handle_t handle() const { return touch_; }
 
+  [[nodiscard]] lv_indev_t *indev() const { return indev_; }
+
 private:
   static constexpr auto tag_ = "Xpt2046Touch";
 

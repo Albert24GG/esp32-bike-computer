@@ -5,16 +5,22 @@
 #include "esp_event_base.h"
 #include "esp_now.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
+#include "app_settings.hpp"
 #include "app/lvgl_port_wrapper.hpp"
 #include "hardware/ili9341_display.hpp"
 #include "hardware/sd_card.hpp"
 #include "hardware/spi_bus.hpp"
 #include "hardware/xpt2046_touch.hpp"
+#include "persistent_store.hpp"
 #include "ride_metrics.hpp"
 
 #include "constants/board_pins.hpp"
 #include "constants/hw_config.hpp"
+
+#include <mutex>
 
 namespace app {
 
@@ -32,21 +38,38 @@ public:
 
   [[nodiscard]] esp_err_t init() noexcept;
 
+  void on_reset_trip() noexcept;
+  void on_exit_screen_settings() noexcept;
+  void reset_sleep_timeout() noexcept;
+
 private:
   App() = default;
 
+  [[nodiscard]] esp_err_t init_storage() noexcept;
   [[nodiscard]] esp_err_t init_touch_wakeup() noexcept;
   [[nodiscard]] esp_err_t init_main_event_loop() noexcept;
   [[nodiscard]] esp_err_t init_timeout_timer() noexcept;
+  [[nodiscard]] esp_err_t init_persistence_timer() noexcept;
   [[nodiscard]] esp_err_t init_wifi() noexcept;
   [[nodiscard]] esp_err_t init_espnow() noexcept;
   [[nodiscard]] esp_err_t init_speed_inactivity_timer() noexcept;
   [[nodiscard]] esp_err_t init_hardware() noexcept;
+  [[nodiscard]] esp_err_t init_ui() noexcept;
+  [[nodiscard]] esp_err_t init_ui_update_task() noexcept;
+
+  void apply_settings(const Settings &settings) noexcept;
+  void refresh_ui_unlocked() noexcept;
+  void refresh_ui_from_task() noexcept;
+  void save_ride_state_if_needed(bool force) noexcept;
+  [[nodiscard]] PersistentRideState persistent_ride_state_unlocked() const noexcept;
 
   static void espnow_recv_cb(const esp_now_recv_info_t *recv_info,
                              const uint8_t *data, int data_len) noexcept;
   static void sleep_timeout_timer_cb(void *arg) noexcept;
   static void speed_inactivity_timer_cb(void *arg) noexcept;
+  static void persistence_timer_cb(void *arg) noexcept;
+  static void ui_update_task(void *arg) noexcept;
+  static void lvgl_input_event_cb(lv_event_t *event) noexcept;
 
   static void espnow_recv_handler(void *event_handler_arg,
                                   esp_event_base_t event_base, int32_t event_id,
@@ -59,9 +82,20 @@ private:
   esp_event_loop_handle_t main_event_loop_handle_{};
   esp_timer_handle_t timeout_timer_handle_{};
   esp_timer_handle_t speed_inactivity_timer_handle_{};
+  esp_timer_handle_t persistence_timer_handle_{};
+  TaskHandle_t ui_update_task_handle_{};
   bool initialized_{false};
   ride_metrics::RideMetrics ride_metrics_{{}};
+  Settings settings_{};
+  PersistentStore persistent_store_{};
+  PersistentRideState loaded_ride_state_{};
+  mutable std::mutex state_mutex_{};
   uint64_t last_packet_seq_num_{0};
+  uint64_t last_wheel_cumulative_rotations_{0};
+  uint64_t last_wheel_cumulative_ride_time_us_{0};
+  uint64_t unsaved_distance_mm_{0};
+  uint64_t unsaved_ride_time_us_{0};
+  bool ride_state_dirty_{false};
   struct {
     hw::SpiBus spi_bus{};
     hw::Ili9341Display lcd{};

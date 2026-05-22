@@ -1,5 +1,6 @@
 #pragma once
 
+#include "driver/ledc.h"
 #include "driver/touch_sens.h"
 #include "driver/touch_version_types.h"
 #include "hal/spi_types.h"
@@ -41,6 +42,18 @@ constexpr inline bool mirror_y{false};
 constexpr inline bool swap_xy{false};
 constexpr inline bool invert_color{false};
 } // namespace lcd
+
+namespace backlight {
+constexpr inline ledc_mode_t speed_mode{LEDC_LOW_SPEED_MODE};
+constexpr inline ledc_timer_t timer{LEDC_TIMER_0};
+constexpr inline ledc_channel_t channel{LEDC_CHANNEL_0};
+constexpr inline ledc_timer_bit_t duty_resolution{LEDC_TIMER_10_BIT};
+constexpr inline uint32_t frequency_hz{5'000};
+constexpr inline uint32_t max_duty{(1u << 10) - 1u};
+
+// 10% duty is the minimum safe duty for backlight
+constexpr inline uint32_t min_safe_duty{max_duty / 10};
+} // namespace backlight
 
 namespace touchscr {
 constexpr inline uint32_t x_max{lcd::hres};

@@ -3,6 +3,7 @@ idf_component_register(SRC_DIRS "." "app/" "hardware/"
                         esp_driver_touch_sens
                         esp_driver_uart
                         esp_driver_gpio
+                        esp_driver_ledc
                         esp_event
                         esp_timer
                         esp_lcd

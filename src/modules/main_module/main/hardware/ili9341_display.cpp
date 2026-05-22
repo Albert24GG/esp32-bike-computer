@@ -1,4 +1,5 @@
 #include "ili9341_display.hpp"
+#include "driver/ledc.h"
 #include "esp_check.h"
 #include "esp_err.h"
 #include "esp_lcd_io_spi.h"
@@ -17,12 +18,25 @@ esp_err_t Ili9341Display::init() noexcept {
   }
 
   if (pins::lcd_backlight != GPIO_NUM_NC) {
-    gpio_config_t bl_cfg = {};
-    bl_cfg.pin_bit_mask = 1ULL << pins::lcd_backlight;
-    bl_cfg.mode = GPIO_MODE_OUTPUT;
-    ESP_RETURN_ON_ERROR(gpio_config(&bl_cfg), tag_,
-                        "backlight gpio_config failed");
-    gpio_set_level(pins::lcd_backlight, 0);
+    ledc_timer_config_t timer_cfg = {};
+    timer_cfg.speed_mode = backlight::speed_mode;
+    timer_cfg.duty_resolution = backlight::duty_resolution;
+    timer_cfg.timer_num = backlight::timer;
+    timer_cfg.freq_hz = backlight::frequency_hz;
+    timer_cfg.clk_cfg = LEDC_AUTO_CLK;
+    ESP_RETURN_ON_ERROR(ledc_timer_config(&timer_cfg), tag_,
+                        "backlight ledc timer config failed");
+
+    ledc_channel_config_t channel_cfg = {};
+    channel_cfg.gpio_num = pins::lcd_backlight;
+    channel_cfg.speed_mode = backlight::speed_mode;
+    channel_cfg.channel = backlight::channel;
+    channel_cfg.timer_sel = backlight::timer;
+    channel_cfg.duty = 0;
+    channel_cfg.hpoint = 0;
+    ESP_RETURN_ON_ERROR(ledc_channel_config(&channel_cfg), tag_,
+                        "backlight ledc channel config failed");
+    backlight_pwm_initialized_ = true;
   }
 
   esp_lcd_panel_io_spi_config_t io_cfg = {};
@@ -64,10 +78,36 @@ esp_err_t Ili9341Display::init() noexcept {
                       "panel display on failed");
 
   if (pins::lcd_backlight != GPIO_NUM_NC) {
-    gpio_set_level(pins::lcd_backlight, 1);
+    ESP_RETURN_ON_ERROR(set_backlight_brightness(100), tag_,
+                        "backlight initial brightness failed");
   }
 
   initialized_ = true;
+  return ESP_OK;
+}
+
+esp_err_t Ili9341Display::set_backlight_brightness(uint8_t percent) noexcept {
+  using namespace constants::hw;
+
+  if (pins::lcd_backlight == GPIO_NUM_NC || !backlight_pwm_initialized_) {
+    return ESP_OK;
+  }
+
+  const uint32_t clamped_percent = percent > 100 ? 100 : percent;
+  // Simple curve for better low-end control
+  const uint32_t curved_percent = (clamped_percent * clamped_percent) / 100;
+
+  const uint32_t duty =
+      backlight::min_safe_duty +
+      (backlight::max_duty - backlight::min_safe_duty) * curved_percent / 100;
+
+  ESP_RETURN_ON_ERROR(
+      ledc_set_duty(backlight::speed_mode, backlight::channel, duty), tag_,
+      "backlight ledc_set_duty failed");
+  ESP_RETURN_ON_ERROR(
+      ledc_update_duty(backlight::speed_mode, backlight::channel), tag_,
+      "backlight ledc_update_duty failed");
+
   return ESP_OK;
 }
 } // namespace hw

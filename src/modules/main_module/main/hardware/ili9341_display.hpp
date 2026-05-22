@@ -28,6 +28,8 @@ public:
 
   [[nodiscard]] esp_err_t init() noexcept;
 
+  [[nodiscard]] esp_err_t set_backlight_brightness(uint8_t percent) noexcept;
+
   [[nodiscard]] esp_lcd_panel_handle_t panel() const noexcept { return panel_; }
 
   [[nodiscard]] esp_lcd_panel_io_handle_t io() const noexcept { return io_; }
@@ -38,5 +40,6 @@ private:
   esp_lcd_panel_io_handle_t io_{nullptr};
   esp_lcd_panel_handle_t panel_{nullptr};
   bool initialized_{false};
+  bool backlight_pwm_initialized_{false};
 };
 } // namespace hw
