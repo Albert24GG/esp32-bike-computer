@@ -78,6 +78,10 @@ private:
                                     esp_event_base_t event_base,
                                     int32_t event_id,
                                     void *event_data) noexcept;
+  static void persistence_save_handler(void *event_handler_arg,
+                                       esp_event_base_t event_base,
+                                       int32_t event_id,
+                                       void *event_data) noexcept;
 
   esp_event_loop_handle_t main_event_loop_handle_{};
   esp_timer_handle_t timeout_timer_handle_{};

@@ -78,7 +78,11 @@ esp_err_t touch_initial_calibration(touch_sensor_handle_t sens_handle,
 namespace app {
 
 ESP_EVENT_DEFINE_BASE(APP_EVENTS);
-enum { APP_EVENT_SLEEP_TIMEOUT, APP_EVENT_ESPNOW_RECV };
+enum {
+  APP_EVENT_SLEEP_TIMEOUT,
+  APP_EVENT_ESPNOW_RECV,
+  APP_EVENT_PERSISTENCE_SAVE
+};
 
 esp_err_t App::init_touch_wakeup() noexcept {
   /* Handles of touch sensor */
@@ -304,6 +308,12 @@ esp_err_t App::init_main_event_loop() noexcept {
           App::espnow_recv_handler, nullptr, nullptr),
       log_tag,
       "Failed to register ESP-NOW receive event handler for main event loop");
+  ESP_RETURN_ON_ERROR(
+      esp_event_handler_instance_register_with(
+          main_event_loop_handle_, APP_EVENTS, APP_EVENT_PERSISTENCE_SAVE,
+          App::persistence_save_handler, nullptr, nullptr),
+      log_tag,
+      "Failed to register persistence event handler for main event loop");
 
   return ESP_OK;
 }
@@ -695,7 +705,14 @@ void App::sleep_timeout_timer_cb(void *arg) noexcept {
 
 void App::persistence_timer_cb(void *arg) noexcept {
   App &self = *static_cast<App *>(arg);
-  self.save_ride_state_if_needed(false);
+
+  const esp_err_t err =
+      esp_event_post_to(self.main_event_loop_handle_, APP_EVENTS,
+                        APP_EVENT_PERSISTENCE_SAVE, nullptr, 0, 0);
+  if (err != ESP_OK) {
+    ESP_EARLY_LOGW(log_tag, "Failed to post persistence save event: %s",
+                   esp_err_to_name(err));
+  }
 }
 
 void App::ui_update_task(void *arg) noexcept {
@@ -725,6 +742,13 @@ void App::sleep_timeout_handler(void *event_handler_arg,
       static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)));
 
   esp_deep_sleep_start();
+}
+
+void App::persistence_save_handler(void *event_handler_arg,
+                                   esp_event_base_t event_base,
+                                   int32_t event_id,
+                                   void *event_data) noexcept {
+  App::get_instance().save_ride_state_if_needed(false);
 }
 
 } // namespace app
