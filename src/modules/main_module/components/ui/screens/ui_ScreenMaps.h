@@ -13,7 +13,6 @@ extern "C" {
 // SCREEN: ui_ScreenMaps
 extern void ui_ScreenMaps_screen_init(void);
 extern void ui_ScreenMaps_screen_destroy(void);
-extern void ui_event_ScreenMaps(lv_event_t * e);
 extern lv_obj_t * ui_ScreenMaps;
 extern lv_obj_t * ui_Container5;
 extern void ui_event_ButtonMapsBack_btn(lv_event_t * e);

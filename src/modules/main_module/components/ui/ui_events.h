@@ -10,8 +10,8 @@
 extern "C" {
 #endif
 
-void cb_ble_start_pairing(lv_event_t * e);
 void cb_exit_screen_maps(lv_event_t * e);
+void cb_ble_start_pairing(lv_event_t * e);
 void cb_ble_cancel_pairing(lv_event_t * e);
 void cb_exit_screen_settings(lv_event_t * e);
 void cb_reset_trip(lv_event_t * e);
