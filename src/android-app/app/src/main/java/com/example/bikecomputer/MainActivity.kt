@@ -3,6 +3,7 @@ package com.example.bikecomputer
 import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -17,7 +18,6 @@ import android.os.Bundle
 import android.os.IBinder
 import android.text.method.ScrollingMovementMethod
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -227,11 +227,7 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
 
         val intent = Intent(this, BikeBleLocationService::class.java)
             .setAction(BikeBleLocationService.ACTION_START_SCAN)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+        startForegroundService(intent)
         service?.startScanning()
     }
 
@@ -260,7 +256,7 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
 
     private fun requestNeededPermissions() {
         val missing = requiredPermissions().filterNot(::hasPermission)
-        if (missing.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (missing.isNotEmpty()) {
             requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
         }
     }
@@ -279,11 +275,10 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
     private fun hasAllPermissions() = requiredPermissions().all(::hasPermission)
 
     private fun hasPermission(permission: String) =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     private fun isBluetoothEnabled(): Boolean =
-        BluetoothAdapter.getDefaultAdapter()?.isEnabled == true
+        getSystemService(BluetoothManager::class.java).adapter?.isEnabled == true
 
     private fun formatLocation(location: Location): String =
         String.format(Locale.US, "%.6f, %.6f, %.1fm",

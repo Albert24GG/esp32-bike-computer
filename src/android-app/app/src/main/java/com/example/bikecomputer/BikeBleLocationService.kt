@@ -21,6 +21,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -301,11 +302,7 @@ class BikeBleLocationService : Service() {
         }
 
         setState(STATE_CONNECTING, "Connecting to ${displayName(device)}")
-        gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            device.connectGatt(this, false, gattCallback)
-        }
+        gatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
     private fun disconnectGatt() {
@@ -466,7 +463,12 @@ class BikeBleLocationService : Service() {
     private fun ensureForeground(text: String) {
         val notification = buildNotification(text)
         if (!foreground) {
-            startForeground(NOTIFICATION_ID, notification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
             foreground = true
         } else {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager?)
@@ -480,12 +482,7 @@ class BikeBleLocationService : Service() {
         workRequested = false
         setState(STATE_IDLE, text)
         if (foreground) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
-            }
+            stopForeground(STOP_FOREGROUND_REMOVE)
             foreground = false
         }
         stopSelf()
@@ -494,11 +491,7 @@ class BikeBleLocationService : Service() {
     private fun buildNotification(text: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            Notification.Builder(this)
-        }
+        val builder = Notification.Builder(this, CHANNEL_ID)
         return builder
             .setContentTitle("Bike computer location")
             .setContentText(text)
@@ -509,7 +502,6 @@ class BikeBleLocationService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID, "Bike computer location", NotificationManager.IMPORTANCE_LOW)
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager?)
@@ -546,8 +538,7 @@ class BikeBleLocationService : Service() {
     private fun hasLocationPermission() = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
 
     private fun hasPermission(permission: String) =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     private fun deviceName(device: BluetoothDevice?): String? {
         if (device == null || !hasConnectPermission()) return null
