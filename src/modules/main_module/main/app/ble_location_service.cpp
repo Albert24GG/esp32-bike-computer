@@ -478,8 +478,8 @@ esp_err_t BleLocationService::start_advertising() noexcept {
   ble_gap_adv_params adv_params{};
   adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-  adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(500);
-  adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(510);
+  adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(100);
+  adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(120);
 
   rc = ble_gap_adv_start(own_addr_type_, nullptr, BLE_HS_FOREVER, &adv_params,
                          BleLocationService::gap_event_handler, this);
