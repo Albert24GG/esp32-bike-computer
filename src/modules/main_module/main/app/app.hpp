@@ -15,6 +15,7 @@
 #include "hardware/sd_card.hpp"
 #include "hardware/spi_bus.hpp"
 #include "hardware/xpt2046_touch.hpp"
+#include "map_renderer.hpp"
 #include "persistent_store.hpp"
 #include "ride_metrics.hpp"
 
@@ -106,6 +107,7 @@ private:
   bool ui_ready_{false};
   ride_metrics::RideMetrics ride_metrics_{{}};
   BleLocationService ble_location_{};
+  MapRenderer map_renderer_{};
   Settings settings_{};
   PersistentStore persistent_store_{};
   PersistentRideState loaded_ride_state_{};

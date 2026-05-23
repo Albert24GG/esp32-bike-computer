@@ -419,8 +419,11 @@ esp_err_t App::init_hardware() noexcept {
   ESP_RETURN_ON_ERROR(utils::set_idle_high(pins::touchscr_cs), log_tag,
                       "touch CS idle-high failed");
 
-  // Optional. For first bring-up, you may comment this out until LCD works.
-  // ESP_RETURN_ON_ERROR(sd.mount(), TAG, "SD mount failed");
+  const esp_err_t sd_err = hardware_.sd.mount();
+  if (sd_err != ESP_OK) {
+    ESP_LOGW(log_tag, "SD mount failed; maps will use the fallback background: %s",
+             esp_err_to_name(sd_err));
+  }
 
   ESP_RETURN_ON_ERROR(hardware_.lcd.init(), log_tag, "LCD init failed");
 
@@ -868,6 +871,7 @@ void App::ble_location_handler(void *event_handler_arg,
     app.lvgl_.lock();
     ui_presenter::write_maps_location(location.latitude, location.longitude,
                                       location.accuracy_m);
+    app.map_renderer_.render_location(location);
     app.lvgl_.unlock();
   }
 
@@ -903,6 +907,7 @@ void App::ble_state_handler(void *event_handler_arg,
       if (has_location) {
         ui_presenter::write_maps_location(location.latitude, location.longitude,
                                           location.accuracy_m);
+        app.map_renderer_.render_location(location);
       } else {
         ui_presenter::write_maps_connected_waiting();
       }

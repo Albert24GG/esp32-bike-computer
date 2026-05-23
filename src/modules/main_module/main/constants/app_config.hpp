@@ -57,4 +57,12 @@ constexpr inline uint64_t min_valid_period_us{50'000};
 constexpr inline uint64_t max_valid_period_us{30'000'000};
 } // namespace ride_metrics
 
+namespace maps {
+constexpr inline uint8_t fixed_zoom{16};
+constexpr inline uint16_t tile_size_px{256};
+constexpr inline const char *tile_root{"/sdcard/maps"};
+constexpr inline const char *tile_extension{".rgb565"};
+constexpr inline uint8_t min_rerender_delta_px{2};
+} // namespace maps
+
 } // namespace constants::app
