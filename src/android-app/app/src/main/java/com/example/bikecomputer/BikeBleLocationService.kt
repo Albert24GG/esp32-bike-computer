@@ -32,6 +32,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelUuid
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import java.nio.charset.StandardCharsets
@@ -82,6 +83,27 @@ class BikeBleLocationService : Service() {
     private var activeWriteBytes: ByteArray? = null
     private var activeWriteText: String? = null
     private var writeInFlight = false
+    private var writeAttemptSerial = 0
+    private var lastLocationQueuedAtMs = 0L
+
+    private var periodicLocationSendScheduled = false
+    private val periodicLocationSend = object : Runnable {
+        override fun run() {
+            if (!periodicLocationSendScheduled) return
+
+            if (workRequested && state == STATE_CONNECTED) {
+                val nowMs = SystemClock.elapsedRealtime()
+                if (lastLocationQueuedAtMs == 0L ||
+                    nowMs - lastLocationQueuedAtMs >= LOCATION_RESEND_INTERVAL_MS) {
+                    lastLocation?.let(::queueLocation)
+                }
+            }
+
+            if (periodicLocationSendScheduled) {
+                mainHandler.postDelayed(this, LOCATION_RESEND_INTERVAL_MS)
+            }
+        }
+    }
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -157,6 +179,7 @@ class BikeBleLocationService : Service() {
             log("Location write characteristic ready")
             setState(STATE_CONNECTED, "Connected; sending location")
             lastLocation?.let(::queueLocation)
+            startPeriodicLocationSend()
         }
 
         override fun onCharacteristicWrite(
@@ -201,7 +224,7 @@ class BikeBleLocationService : Service() {
             ACTION_STOP_SCAN -> stopScanningAndIdle()
             ACTION_DISCONNECT -> disconnectAndStop()
         }
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 
     override fun onBind(intent: Intent): IBinder = binder
@@ -210,6 +233,7 @@ class BikeBleLocationService : Service() {
         disconnectGatt()
         stopScanInternal()
         stopLocationUpdates()
+        stopPeriodicLocationSend()
         super.onDestroy()
     }
 
@@ -218,6 +242,7 @@ class BikeBleLocationService : Service() {
         manualDisconnect = false
         ensureForeground("Scanning for $DEVICE_NAME")
         startLocationUpdates()
+        startPeriodicLocationSend()
         startScanInternal()
     }
 
@@ -321,6 +346,7 @@ class BikeBleLocationService : Service() {
     }
 
     private fun queueLocation(location: Location) {
+        lastLocationQueuedAtMs = SystemClock.elapsedRealtime()
         val payload = String.format(Locale.US, "%.6f,%.6f,%.1f",
             location.latitude, location.longitude, location.accuracy)
         synchronized(writeLock) {
@@ -335,6 +361,7 @@ class BikeBleLocationService : Service() {
         val characteristic: BluetoothGattCharacteristic
         val bytes: ByteArray
         val text: String
+        val writeSerial: Int
 
         synchronized(writeLock) {
             if (writeInFlight || pendingWriteBytes == null) return
@@ -349,6 +376,8 @@ class BikeBleLocationService : Service() {
             activeWriteBytes = bytes
             activeWriteText = text
             writeInFlight = true
+            writeAttemptSerial += 1
+            writeSerial = writeAttemptSerial
         }
 
         characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -359,6 +388,7 @@ class BikeBleLocationService : Service() {
                 retryActiveWrite("Location write not accepted: $text result=$result")
             } else {
                 log("Location write queued: $text")
+                scheduleWriteTimeout(writeSerial)
             }
         } else {
             characteristic.value = bytes
@@ -366,6 +396,7 @@ class BikeBleLocationService : Service() {
                 retryActiveWrite("Location write not accepted: $text")
             } else {
                 log("Location write queued: $text")
+                scheduleWriteTimeout(writeSerial)
             }
         }
     }
@@ -407,6 +438,29 @@ class BikeBleLocationService : Service() {
         mainHandler.postDelayed(::drainWriteQueue, 500L)
     }
 
+    private fun scheduleWriteTimeout(writeSerial: Int) {
+        mainHandler.postDelayed({ handleWriteTimeout(writeSerial) }, WRITE_TIMEOUT_MS)
+    }
+
+    private fun handleWriteTimeout(writeSerial: Int) {
+        val text: String?
+        synchronized(writeLock) {
+            if (!writeInFlight || writeAttemptSerial != writeSerial) return
+
+            text = activeWriteText
+            if (pendingWriteBytes == null && activeWriteBytes != null) {
+                pendingWriteBytes = activeWriteBytes
+                pendingWriteText = activeWriteText
+            }
+            activeWriteBytes = null
+            activeWriteText = null
+            writeInFlight = false
+        }
+
+        log("Location write timed out: $text; retrying")
+        drainWriteQueue()
+    }
+
     private fun clearWriteQueue() {
         synchronized(writeLock) {
             pendingWriteBytes = null
@@ -414,6 +468,7 @@ class BikeBleLocationService : Service() {
             activeWriteBytes = null
             activeWriteText = null
             writeInFlight = false
+            writeAttemptSerial += 1
         }
     }
 
@@ -428,14 +483,14 @@ class BikeBleLocationService : Service() {
         var anyProvider = false
         if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             manager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER, 2000L, 1.0f,
+                LocationManager.GPS_PROVIDER, LOCATION_UPDATE_INTERVAL_MS, 0.0f,
                 locationListener, Looper.getMainLooper())
             anyProvider = true
             log("GPS location updates started")
         }
         if (manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
             manager.requestLocationUpdates(
-                LocationManager.NETWORK_PROVIDER, 2000L, 1.0f,
+                LocationManager.NETWORK_PROVIDER, LOCATION_UPDATE_INTERVAL_MS, 0.0f,
                 locationListener, Looper.getMainLooper())
             anyProvider = true
             log("Network location updates started")
@@ -460,6 +515,22 @@ class BikeBleLocationService : Service() {
         locationManager?.removeUpdates(locationListener)
     }
 
+    private fun startPeriodicLocationSend() {
+        if (periodicLocationSendScheduled) return
+
+        periodicLocationSendScheduled = true
+        mainHandler.postDelayed(periodicLocationSend, LOCATION_RESEND_INTERVAL_MS)
+        log("Periodic location resend started")
+    }
+
+    private fun stopPeriodicLocationSend() {
+        if (!periodicLocationSendScheduled) return
+
+        periodicLocationSendScheduled = false
+        mainHandler.removeCallbacks(periodicLocationSend)
+        log("Periodic location resend stopped")
+    }
+
     private fun ensureForeground(text: String) {
         val notification = buildNotification(text)
         if (!foreground) {
@@ -479,6 +550,7 @@ class BikeBleLocationService : Service() {
     private fun stopForegroundWork(text: String) {
         stopLocationUpdates()
         stopScanInternal()
+        stopPeriodicLocationSend()
         workRequested = false
         setState(STATE_IDLE, text)
         if (foreground) {
@@ -569,6 +641,9 @@ class BikeBleLocationService : Service() {
         private const val CHANNEL_ID = "bike_ble_location"
         private const val TAG = "BikeBleLocationService"
         private const val DEVICE_NAME = "BikeComputer"
+        private const val LOCATION_UPDATE_INTERVAL_MS = 2_000L
+        private const val LOCATION_RESEND_INTERVAL_MS = 3_000L
+        private const val WRITE_TIMEOUT_MS = 5_000L
 
         private val SERVICE_UUID: UUID =
             UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
