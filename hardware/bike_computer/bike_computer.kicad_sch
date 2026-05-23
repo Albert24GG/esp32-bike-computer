@@ -6,7 +6,7 @@
 	(paper "A4")
 	(title_block
 		(title "Wireless Bike Computer")
-		(date "2026-05-08")
+		(date "2026-05-24")
 		(rev "1.0")
 	)
 	(lib_symbols
@@ -3006,7 +3006,7 @@
 		)
 		(uuid "1451dd45-40a6-4fc4-a9a7-689ca8f0f094")
 	)
-	(label "TOUCH_CS"
+	(label "LCD_RESET"
 		(at 49.53 55.88 180)
 		(effects
 			(font
@@ -3036,7 +3036,7 @@
 		)
 		(uuid "391e5324-406f-46a6-8509-76cdad4325a3")
 	)
-	(label "LCD_LIGHT"
+	(label "SD_CS"
 		(at 49.53 63.5 180)
 		(effects
 			(font
@@ -3086,7 +3086,7 @@
 		)
 		(uuid "7bb513af-6571-441f-aab2-26f184249b96")
 	)
-	(label "SD_CS"
+	(label "LCD_CS"
 		(at 49.53 59.69 180)
 		(effects
 			(font
@@ -3116,7 +3116,7 @@
 		)
 		(uuid "9ac1fb9c-d463-4a34-a882-595658b840c8")
 	)
-	(label "LCD_RST"
+	(label "TOUCH_CS"
 		(at 49.53 44.45 180)
 		(effects
 			(font
@@ -3126,7 +3126,7 @@
 		)
 		(uuid "a095f602-d575-47d3-94a5-3b3345cd2966")
 	)
-	(label "LCD_DC"
+	(label "LCD_LIGHT"
 		(at 49.53 48.26 180)
 		(effects
 			(font
@@ -3136,7 +3136,7 @@
 		)
 		(uuid "a107891f-ce7b-418d-b199-10002a7873a0")
 	)
-	(label "LCD_CS"
+	(label "LCD_DC"
 		(at 49.53 52.07 180)
 		(effects
 			(font
