@@ -1,0 +1,69 @@
+{
+  "deftheme": {
+    "name": "Default",
+    "properties": [
+      {
+        "nid": 1000206,
+        "strtype": "THEME_COLOR",
+        "strval": "Background",
+        "intarray": [
+          16,
+          20,
+          24,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000207,
+        "strtype": "THEME_COLOR",
+        "strval": "Card Background",
+        "intarray": [
+          26,
+          32,
+          38,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000208,
+        "strtype": "THEME_COLOR",
+        "strval": "Secondary Card",
+        "intarray": [
+          36,
+          43,
+          51,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000209,
+        "strtype": "THEME_COLOR",
+        "strval": "Primary Accent",
+        "intarray": [
+          0,
+          174,
+          239,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000210,
+        "strtype": "THEME_COLOR",
+        "strval": "Main Text",
+        "intarray": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "InheritedType": 0
+      }
+    ]
+  },
+  "themes": [],
+  "selected_theme": "Default"
+}
