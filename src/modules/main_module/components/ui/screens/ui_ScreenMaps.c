@@ -190,7 +190,6 @@ void ui_ScreenMaps_screen_init(void)
     lv_obj_add_event_cb(ui_ButtonMapsBack, ui_event_ButtonMapsBack_btn, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_ButtonMapsStartPairing, ui_event_ButtonMapsStartPairing, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_ButtonMapsCancelPairing, ui_event_ButtonMapsCancelPairing, LV_EVENT_ALL, NULL);
-
 }
 
 void ui_ScreenMaps_screen_destroy(void)

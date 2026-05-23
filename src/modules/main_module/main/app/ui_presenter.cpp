@@ -16,6 +16,45 @@ void set_label(lv_obj_t *label, const char *text) noexcept {
   }
 }
 
+void set_visible(lv_obj_t *obj, bool visible) noexcept {
+  if (obj == nullptr) {
+    return;
+  }
+
+  if (visible) {
+    lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void set_button_enabled(lv_obj_t *button, bool enabled) noexcept {
+  if (button == nullptr) {
+    return;
+  }
+
+  if (enabled) {
+    lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_state(button, LV_STATE_DISABLED | LV_STATE_PRESSED |
+                                    LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY);
+  } else {
+    lv_obj_remove_flag(button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(button, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+    lv_obj_remove_flag(button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    lv_obj_add_state(button, LV_STATE_DISABLED);
+  }
+}
+
+void write_maps_state(bool no_connected_visible, bool connecting_visible,
+                      bool render_visible) noexcept {
+  set_visible(ui_MapsNoConnectedContainer, no_connected_visible);
+  set_visible(ui_MapsConnectingContainer, connecting_visible);
+  set_visible(ui_MapsRenderContainer, render_visible);
+
+  set_button_enabled(ui_ButtonMapsStartPairing, no_connected_visible);
+  set_button_enabled(ui_ButtonMapsCancelPairing, connecting_visible);
+}
+
 double display_distance(uint64_t distance_mm, UnitSystem unit_system) noexcept {
   const double km = static_cast<double>(distance_mm) / 1'000'000.0;
   return unit_system == UnitSystem::Metric ? km : km / km_per_mile;
@@ -155,6 +194,29 @@ Settings read_settings(const Settings &fallback) noexcept {
   }
 
   return normalize_settings(settings);
+}
+
+void write_maps_not_connected() noexcept {
+  write_maps_state(true, false, false);
+}
+
+void write_maps_connecting() noexcept {
+  write_maps_state(false, true, false);
+}
+
+void write_maps_connected_waiting() noexcept {
+  set_label(ui_LabelMapsCoordinates, "Waiting for coordinates...");
+  write_maps_state(false, false, true);
+}
+
+void write_maps_location(double latitude, double longitude,
+                         float accuracy_m) noexcept {
+  char buf[64]{};
+  std::snprintf(buf, sizeof(buf), "%.6f° N +/- %.0fm\n%.6f° E",
+                latitude, static_cast<double>(accuracy_m), longitude);
+  set_label(ui_LabelMapsCoordinates, buf);
+
+  write_maps_state(false, false, true);
 }
 
 } // namespace app::ui_presenter

@@ -81,7 +81,9 @@ ESP_EVENT_DEFINE_BASE(APP_EVENTS);
 enum {
   APP_EVENT_SLEEP_TIMEOUT,
   APP_EVENT_ESPNOW_RECV,
-  APP_EVENT_PERSISTENCE_SAVE
+  APP_EVENT_PERSISTENCE_SAVE,
+  APP_EVENT_BLE_LOCATION,
+  APP_EVENT_BLE_STATE
 };
 
 esp_err_t App::init_touch_wakeup() noexcept {
@@ -209,13 +211,23 @@ esp_err_t App::init() noexcept {
                       "Failed to initialize touch wakeup source");
   ESP_RETURN_ON_ERROR(init_wifi(), log_tag, "Failed to initialize WiFi");
   ESP_RETURN_ON_ERROR(init_espnow(), log_tag, "Failed to initialize ESP-NOW");
+  ESP_RETURN_ON_ERROR(init_ble_location(), log_tag,
+                      "Failed to initialize BLE location service");
   ESP_RETURN_ON_ERROR(init_speed_inactivity_timer(), log_tag,
                       "Failed to initialize speed inactivity timer");
-  ESP_RETURN_ON_ERROR(init_hardware(), log_tag,
-                      "Failed to initialize hardware");
-  ESP_RETURN_ON_ERROR(init_ui(), log_tag, "Failed to initialize UI");
-  ESP_RETURN_ON_ERROR(init_ui_update_task(), log_tag,
-                      "Failed to initialize UI update task");
+
+  const esp_err_t hardware_err = init_hardware();
+  if (hardware_err == ESP_OK) {
+    ESP_RETURN_ON_ERROR(init_ui(), log_tag, "Failed to initialize UI");
+    ESP_RETURN_ON_ERROR(init_ui_update_task(), log_tag,
+                        "Failed to initialize UI update task");
+    ui_ready_ = true;
+  } else {
+    ESP_LOGE(log_tag,
+             "Hardware/UI initialization failed (%s); continuing headless so "
+             "BLE and ESP-NOW logs remain available",
+             esp_err_to_name(hardware_err));
+  }
 
   initialized_ = true;
 
@@ -314,6 +326,18 @@ esp_err_t App::init_main_event_loop() noexcept {
           App::persistence_save_handler, nullptr, nullptr),
       log_tag,
       "Failed to register persistence event handler for main event loop");
+  ESP_RETURN_ON_ERROR(
+      esp_event_handler_instance_register_with(
+          main_event_loop_handle_, APP_EVENTS, APP_EVENT_BLE_LOCATION,
+          App::ble_location_handler, nullptr, nullptr),
+      log_tag,
+      "Failed to register BLE location event handler for main event loop");
+  ESP_RETURN_ON_ERROR(
+      esp_event_handler_instance_register_with(
+          main_event_loop_handle_, APP_EVENTS, APP_EVENT_BLE_STATE,
+          App::ble_state_handler, nullptr, nullptr),
+      log_tag,
+      "Failed to register BLE state event handler for main event loop");
 
   return ESP_OK;
 }
@@ -336,6 +360,9 @@ esp_err_t App::init_wifi() noexcept {
   ESP_RETURN_ON_ERROR(
       esp_wifi_set_channel(constants::hw::wifi::channel, WIFI_SECOND_CHAN_NONE),
       log_tag, "esp_wifi_set_channel failed");
+  ESP_RETURN_ON_ERROR(esp_wifi_set_ps(WIFI_PS_MIN_MODEM), log_tag,
+                      "esp_wifi_set_ps failed");
+  ESP_LOGI(log_tag, "WiFi power save set to minimum modem sleep");
 
   return ESP_OK;
 }
@@ -345,6 +372,19 @@ esp_err_t App::init_espnow() noexcept {
 
   ESP_RETURN_ON_ERROR(esp_now_register_recv_cb(App::espnow_recv_cb), log_tag,
                       "esp_now_register_recv_cb failed");
+
+  return ESP_OK;
+}
+
+esp_err_t App::init_ble_location() noexcept {
+  BleLocationService::Config config{};
+  config.location_callback = App::ble_location_cb;
+  config.location_callback_ctx = this;
+  config.state_callback = App::ble_state_cb;
+  config.state_callback_ctx = this;
+
+  ESP_RETURN_ON_ERROR(ble_location_.init(config), log_tag,
+                      "BLE location init failed");
 
   return ESP_OK;
 }
@@ -520,11 +560,13 @@ void App::apply_settings(const Settings &settings) noexcept {
   }
 
   if (previous.brightness_percent != normalized.brightness_percent) {
-    const esp_err_t err =
-        hardware_.lcd.set_backlight_brightness(normalized.brightness_percent);
-    if (err != ESP_OK) {
-      ESP_LOGE(log_tag, "Failed to apply brightness: %s",
-               esp_err_to_name(err));
+    if (ui_ready_) {
+      const esp_err_t err =
+          hardware_.lcd.set_backlight_brightness(normalized.brightness_percent);
+      if (err != ESP_OK) {
+        ESP_LOGE(log_tag, "Failed to apply brightness: %s",
+                 esp_err_to_name(err));
+      }
     }
   }
 
@@ -554,6 +596,10 @@ void App::refresh_ui_unlocked() noexcept {
 }
 
 void App::refresh_ui_from_task() noexcept {
+  if (!ui_ready_) {
+    return;
+  }
+
   lvgl_.lock();
   refresh_ui_unlocked();
   lvgl_.unlock();
@@ -567,7 +613,9 @@ void App::on_reset_trip() noexcept {
   }
 
   save_ride_state_if_needed(true);
-  refresh_ui_unlocked();
+  if (ui_ready_) {
+    refresh_ui_unlocked();
+  }
   reset_sleep_timeout();
 }
 
@@ -586,6 +634,30 @@ void App::on_exit_screen_settings() noexcept {
   }
   ui_presenter::write_settings(updated);
   refresh_ui_unlocked();
+  reset_sleep_timeout();
+}
+
+void App::on_ble_start_pairing() noexcept {
+  const esp_err_t err = ble_location_.start_pairing();
+  if (err != ESP_OK) {
+    ESP_LOGE(log_tag, "Failed to start BLE pairing: %s", esp_err_to_name(err));
+  } else if (ui_ready_) {
+    lvgl_.lock();
+    ui_presenter::write_maps_connecting();
+    lvgl_.unlock();
+  }
+  reset_sleep_timeout();
+}
+
+void App::on_ble_cancel_pairing() noexcept {
+  const esp_err_t err = ble_location_.cancel_pairing();
+  if (err != ESP_OK) {
+    ESP_LOGE(log_tag, "Failed to cancel BLE pairing: %s", esp_err_to_name(err));
+  } else if (ui_ready_) {
+    lvgl_.lock();
+    ui_presenter::write_maps_not_connected();
+    lvgl_.unlock();
+  }
   reset_sleep_timeout();
 }
 
@@ -730,6 +802,29 @@ void App::lvgl_input_event_cb(lv_event_t *event) noexcept {
   self.reset_sleep_timeout();
 }
 
+void App::ble_location_cb(const LocationCoordinates &location,
+                          void *ctx) noexcept {
+  App &self = *static_cast<App *>(ctx);
+  const esp_err_t err =
+      esp_event_post_to(self.main_event_loop_handle_, APP_EVENTS,
+                        APP_EVENT_BLE_LOCATION, &location, sizeof(location), 0);
+  if (err != ESP_OK) {
+    ESP_EARLY_LOGW(log_tag, "Failed to post BLE location event: %s",
+                   esp_err_to_name(err));
+  }
+}
+
+void App::ble_state_cb(BleLocationState state, void *ctx) noexcept {
+  App &self = *static_cast<App *>(ctx);
+  const esp_err_t err =
+      esp_event_post_to(self.main_event_loop_handle_, APP_EVENTS,
+                        APP_EVENT_BLE_STATE, &state, sizeof(state), 0);
+  if (err != ESP_OK) {
+    ESP_EARLY_LOGW(log_tag, "Failed to post BLE state event: %s",
+                   esp_err_to_name(err));
+  }
+}
+
 void App::sleep_timeout_handler(void *event_handler_arg,
                                 esp_event_base_t event_base, int32_t event_id,
                                 void *event_data) noexcept {
@@ -749,6 +844,75 @@ void App::persistence_save_handler(void *event_handler_arg,
                                    int32_t event_id,
                                    void *event_data) noexcept {
   App::get_instance().save_ride_state_if_needed(false);
+}
+
+void App::ble_location_handler(void *event_handler_arg,
+                               esp_event_base_t event_base, int32_t event_id,
+                               void *event_data) noexcept {
+  App &app = App::get_instance();
+  const auto &location = *static_cast<LocationCoordinates *>(event_data);
+
+  {
+    std::lock_guard lock(app.state_mutex_);
+    app.last_location_ = location;
+    app.has_location_ = true;
+  }
+
+  ESP_LOGI(log_tag,
+           "BLE location accepted: lat=%.6f lon=%.6f accuracy=%.1fm "
+           "timestamp_ms=%llu",
+           location.latitude, location.longitude,
+           static_cast<double>(location.accuracy_m), location.timestamp_ms);
+
+  if (app.ui_ready_) {
+    app.lvgl_.lock();
+    ui_presenter::write_maps_location(location.latitude, location.longitude,
+                                      location.accuracy_m);
+    app.lvgl_.unlock();
+  }
+
+  app.reset_sleep_timeout();
+}
+
+void App::ble_state_handler(void *event_handler_arg,
+                            esp_event_base_t event_base, int32_t event_id,
+                            void *event_data) noexcept {
+  App &app = App::get_instance();
+  const auto state = *static_cast<BleLocationState *>(event_data);
+
+  ESP_LOGI(log_tag, "BLE location state changed: %u",
+           static_cast<unsigned>(state));
+
+  if (app.ui_ready_) {
+    app.lvgl_.lock();
+    switch (state) {
+    case BleLocationState::Idle:
+      ui_presenter::write_maps_not_connected();
+      break;
+    case BleLocationState::Advertising:
+      ui_presenter::write_maps_connecting();
+      break;
+    case BleLocationState::Connected: {
+      LocationCoordinates location{};
+      bool has_location{};
+      {
+        std::lock_guard lock(app.state_mutex_);
+        location = app.last_location_;
+        has_location = app.has_location_;
+      }
+      if (has_location) {
+        ui_presenter::write_maps_location(location.latitude, location.longitude,
+                                          location.accuracy_m);
+      } else {
+        ui_presenter::write_maps_connected_waiting();
+      }
+      break;
+    }
+    }
+    app.lvgl_.unlock();
+  }
+
+  app.reset_sleep_timeout();
 }
 
 } // namespace app

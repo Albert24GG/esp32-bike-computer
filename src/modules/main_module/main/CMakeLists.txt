@@ -4,6 +4,7 @@ idf_component_register(SRC_DIRS "." "app/" "hardware/"
                         esp_driver_uart
                         esp_driver_gpio
                         esp_driver_ledc
+                        freertos
                         esp_event
                         esp_timer
                         esp_lcd
@@ -15,6 +16,8 @@ idf_component_register(SRC_DIRS "." "app/" "hardware/"
                         sdmmc
                         nvs_flash
                         esp_wifi
+                        bt
+                        esp_coex
                         ui
                     INCLUDE_DIRS "."
                     WHOLE_ARCHIVE

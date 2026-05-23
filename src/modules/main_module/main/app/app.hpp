@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 
 #include "app_settings.hpp"
+#include "ble_location_service.hpp"
 #include "app/lvgl_port_wrapper.hpp"
 #include "hardware/ili9341_display.hpp"
 #include "hardware/sd_card.hpp"
@@ -40,6 +41,8 @@ public:
 
   void on_reset_trip() noexcept;
   void on_exit_screen_settings() noexcept;
+  void on_ble_start_pairing() noexcept;
+  void on_ble_cancel_pairing() noexcept;
   void reset_sleep_timeout() noexcept;
 
 private:
@@ -52,6 +55,7 @@ private:
   [[nodiscard]] esp_err_t init_persistence_timer() noexcept;
   [[nodiscard]] esp_err_t init_wifi() noexcept;
   [[nodiscard]] esp_err_t init_espnow() noexcept;
+  [[nodiscard]] esp_err_t init_ble_location() noexcept;
   [[nodiscard]] esp_err_t init_speed_inactivity_timer() noexcept;
   [[nodiscard]] esp_err_t init_hardware() noexcept;
   [[nodiscard]] esp_err_t init_ui() noexcept;
@@ -70,6 +74,9 @@ private:
   static void persistence_timer_cb(void *arg) noexcept;
   static void ui_update_task(void *arg) noexcept;
   static void lvgl_input_event_cb(lv_event_t *event) noexcept;
+  static void ble_location_cb(const LocationCoordinates &location,
+                              void *ctx) noexcept;
+  static void ble_state_cb(BleLocationState state, void *ctx) noexcept;
 
   static void espnow_recv_handler(void *event_handler_arg,
                                   esp_event_base_t event_base, int32_t event_id,
@@ -82,6 +89,13 @@ private:
                                        esp_event_base_t event_base,
                                        int32_t event_id,
                                        void *event_data) noexcept;
+  static void ble_location_handler(void *event_handler_arg,
+                                   esp_event_base_t event_base,
+                                   int32_t event_id,
+                                   void *event_data) noexcept;
+  static void ble_state_handler(void *event_handler_arg,
+                                esp_event_base_t event_base, int32_t event_id,
+                                void *event_data) noexcept;
 
   esp_event_loop_handle_t main_event_loop_handle_{};
   esp_timer_handle_t timeout_timer_handle_{};
@@ -89,10 +103,14 @@ private:
   esp_timer_handle_t persistence_timer_handle_{};
   TaskHandle_t ui_update_task_handle_{};
   bool initialized_{false};
+  bool ui_ready_{false};
   ride_metrics::RideMetrics ride_metrics_{{}};
+  BleLocationService ble_location_{};
   Settings settings_{};
   PersistentStore persistent_store_{};
   PersistentRideState loaded_ride_state_{};
+  LocationCoordinates last_location_{};
+  bool has_location_{false};
   mutable std::mutex state_mutex_{};
   uint64_t last_packet_seq_num_{0};
   uint64_t last_wheel_cumulative_rotations_{0};
