@@ -177,6 +177,10 @@ void request_low_power_connection_params(uint16_t conn_handle) noexcept {
   }
 }
 
+const char *location_stream_command(bool enabled) noexcept {
+  return enabled ? "location_start" : "location_stop";
+}
+
 } // namespace
 
 esp_err_t BleLocationService::init(const Config &config) noexcept {
@@ -244,6 +248,10 @@ esp_err_t BleLocationService::cancel_pairing() noexcept {
     return ESP_OK;
   }
 
+  if (connected_) {
+    return ESP_OK;
+  }
+
   if (ble_gap_adv_active()) {
     const int rc = ble_gap_adv_stop();
     ESP_RETURN_ON_FALSE(rc == 0, ESP_FAIL, tag,
@@ -253,6 +261,14 @@ esp_err_t BleLocationService::cancel_pairing() noexcept {
 
   notify_state(BleLocationState::Idle);
   return ESP_OK;
+}
+
+void BleLocationService::set_location_updates_requested(
+    bool requested) noexcept {
+  location_updates_requested_ = requested;
+  ESP_LOGI(tag, "BLE phone location updates %s",
+           requested ? "requested" : "paused");
+  notify_status(location_stream_command(requested));
 }
 
 void BleLocationService::on_stack_reset(int reason) noexcept {
@@ -366,6 +382,10 @@ int BleLocationService::gap_event_handler(ble_gap_event *event,
              event->subscribe.cur_notify, event->subscribe.cur_indicate);
     if (event->subscribe.attr_handle == tx_value_handle) {
       self.tx_subscribed_ = event->subscribe.cur_notify != 0;
+      if (self.tx_subscribed_) {
+        self.notify_status(
+            location_stream_command(self.location_updates_requested_));
+      }
     }
     return 0;
 

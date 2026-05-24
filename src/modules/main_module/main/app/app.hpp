@@ -42,6 +42,8 @@ public:
 
   void on_reset_trip() noexcept;
   void on_exit_screen_settings() noexcept;
+  void on_enter_screen_maps() noexcept;
+  void on_exit_screen_maps() noexcept;
   void on_ble_start_pairing() noexcept;
   void on_ble_cancel_pairing() noexcept;
   void reset_sleep_timeout() noexcept;

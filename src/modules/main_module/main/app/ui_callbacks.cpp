@@ -10,9 +10,13 @@ void cb_ble_start_pairing(lv_event_t *e) {
     ESP_LOGI("ui_events", "BLE start pairing event triggered");
     app::App::get_instance().on_ble_start_pairing();
 }
+void cb_enter_screen_maps(lv_event_t *e) {
+    ESP_LOGI("ui_events", "Enter screen maps event triggered");
+    app::App::get_instance().on_enter_screen_maps();
+}
 void cb_exit_screen_maps(lv_event_t *e) {
     ESP_LOGI("ui_events", "Exit screen maps event triggered");
-    app::App::get_instance().reset_sleep_timeout();
+    app::App::get_instance().on_exit_screen_maps();
 }
 void cb_ble_cancel_pairing(lv_event_t *e) {
     ESP_LOGI("ui_events", "BLE cancel pairing event triggered");

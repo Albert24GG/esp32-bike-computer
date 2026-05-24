@@ -641,6 +641,21 @@ void App::on_exit_screen_settings() noexcept {
   reset_sleep_timeout();
 }
 
+void App::on_enter_screen_maps() noexcept {
+  ble_location_.set_location_updates_requested(true);
+  reset_sleep_timeout();
+}
+
+void App::on_exit_screen_maps() noexcept {
+  ble_location_.set_location_updates_requested(false);
+  const esp_err_t err = ble_location_.cancel_pairing();
+  if (err != ESP_OK) {
+    ESP_LOGW(log_tag, "Failed to stop BLE pairing after leaving maps: %s",
+             esp_err_to_name(err));
+  }
+  reset_sleep_timeout();
+}
+
 void App::on_ble_start_pairing() noexcept {
   const esp_err_t err = ble_location_.start_pairing();
   if (err != ESP_OK) {

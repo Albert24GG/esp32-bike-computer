@@ -11,6 +11,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
@@ -64,6 +65,7 @@ class BikeBleLocationService : Service() {
     private var scanner: android.bluetooth.le.BluetoothLeScanner? = null
     private var gatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
+    private var controlCharacteristic: BluetoothGattCharacteristic? = null
     private var locationManager: LocationManager? = null
 
     var lastLocation: Location? = null
@@ -77,6 +79,7 @@ class BikeBleLocationService : Service() {
     private var workRequested = false
     private var scanning = false
     private var manualDisconnect = false
+    private var locationStreamingRequested = false
 
     private var pendingWriteBytes: ByteArray? = null
     private var pendingWriteText: String? = null
@@ -91,7 +94,7 @@ class BikeBleLocationService : Service() {
         override fun run() {
             if (!periodicLocationSendScheduled) return
 
-            if (workRequested && state == STATE_CONNECTED) {
+            if (workRequested && state == STATE_CONNECTED && locationStreamingRequested) {
                 val nowMs = SystemClock.elapsedRealtime()
                 if (lastLocationQueuedAtMs == 0L ||
                     nowMs - lastLocationQueuedAtMs >= LOCATION_RESEND_INTERVAL_MS) {
@@ -145,7 +148,9 @@ class BikeBleLocationService : Service() {
                     closeGatt(callbackGatt)
                     gatt = null
                     writeCharacteristic = null
+                    controlCharacteristic = null
                     clearWriteQueue()
+                    stopLocationStreaming()
 
                     if (manualDisconnect || !workRequested) {
                         manualDisconnect = false
@@ -165,7 +170,8 @@ class BikeBleLocationService : Service() {
                 return
             }
 
-            val rx = callbackGatt.getService(SERVICE_UUID)?.getCharacteristic(RX_UUID)
+            val service = callbackGatt.getService(SERVICE_UUID)
+            val rx = service?.getCharacteristic(RX_UUID)
             if (rx == null) {
                 log("Location write characteristic not found")
                 setState(STATE_CONNECTED, "Connected, but BLE service is incomplete")
@@ -173,13 +179,13 @@ class BikeBleLocationService : Service() {
             }
 
             writeCharacteristic = rx
+            controlCharacteristic = service.getCharacteristic(TX_UUID)
             if (hasConnectPermission()) {
                 callbackGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
             }
             log("Location write characteristic ready")
-            setState(STATE_CONNECTED, "Connected; sending location")
-            lastLocation?.let(::queueLocation)
-            startPeriodicLocationSend()
+            enableControlNotifications(callbackGatt, controlCharacteristic)
+            setState(STATE_CONNECTED, "Connected; waiting for maps screen")
         }
 
         override fun onCharacteristicWrite(
@@ -189,13 +195,43 @@ class BikeBleLocationService : Service() {
         ) {
             completeWrite(statusCode)
         }
+
+        override fun onCharacteristicChanged(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            handleControlMessage(value)
+        }
+
+        @Deprecated("Deprecated in Android")
+        override fun onCharacteristicChanged(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            handleControlMessage(characteristic.value ?: return)
+        }
+
+        override fun onDescriptorWrite(
+            callbackGatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            statusCode: Int
+        ) {
+            if (descriptor.uuid == CCCD_UUID) {
+                if (statusCode == BluetoothGatt.GATT_SUCCESS) {
+                    log("BLE control notifications enabled")
+                } else {
+                    log("BLE control notification setup failed: $statusCode")
+                }
+            }
+        }
     }
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             lastLocation = location
             notifyState()
-            queueLocation(location)
+            if (locationStreamingRequested) queueLocation(location)
         }
 
         @Deprecated("Deprecated in Android")
@@ -241,8 +277,6 @@ class BikeBleLocationService : Service() {
         workRequested = true
         manualDisconnect = false
         ensureForeground("Scanning for $DEVICE_NAME")
-        startLocationUpdates()
-        startPeriodicLocationSend()
         startScanInternal()
     }
 
@@ -263,6 +297,8 @@ class BikeBleLocationService : Service() {
         val localGatt = gatt
         gatt = null
         writeCharacteristic = null
+        controlCharacteristic = null
+        stopLocationStreaming()
         clearWriteQueue()
         if (localGatt != null && hasConnectPermission()) {
             localGatt.disconnect()
@@ -336,6 +372,8 @@ class BikeBleLocationService : Service() {
         val localGatt = gatt
         gatt = null
         writeCharacteristic = null
+        controlCharacteristic = null
+        stopLocationStreaming()
         clearWriteQueue()
         if (localGatt != null && hasConnectPermission()) {
             localGatt.disconnect()
@@ -348,6 +386,8 @@ class BikeBleLocationService : Service() {
     }
 
     private fun queueLocation(location: Location) {
+        if (!locationStreamingRequested || state != STATE_CONNECTED) return
+
         lastLocationQueuedAtMs = SystemClock.elapsedRealtime()
         val payload = String.format(Locale.US, "%.6f,%.6f,%.1f",
             location.latitude, location.longitude, location.accuracy)
@@ -356,6 +396,78 @@ class BikeBleLocationService : Service() {
             pendingWriteText = payload
         }
         drainWriteQueue()
+    }
+
+    private fun enableControlNotifications(
+        localGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic?
+    ) {
+        if (characteristic == null) {
+            log("BLE control characteristic not found; location streaming commands unavailable")
+            return
+        }
+        if (!hasConnectPermission()) return
+
+        if (!localGatt.setCharacteristicNotification(characteristic, true)) {
+            log("Failed to enable BLE control notifications locally")
+            return
+        }
+
+        val descriptor = characteristic.getDescriptor(CCCD_UUID)
+        if (descriptor == null) {
+            log("BLE control CCCD not found")
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val result = localGatt.writeDescriptor(
+                descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+            if (result != BluetoothStatusCodes.SUCCESS) {
+                log("BLE control CCCD write not accepted: $result")
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            @Suppress("DEPRECATION")
+            if (!localGatt.writeDescriptor(descriptor)) {
+                log("BLE control CCCD write not accepted")
+            }
+        }
+    }
+
+    private fun handleControlMessage(value: ByteArray) {
+        val message = String(value, StandardCharsets.UTF_8).trim()
+        when (message) {
+            CONTROL_LOCATION_START -> {
+                log("ESP32 requested location streaming")
+                startLocationStreaming()
+            }
+            CONTROL_LOCATION_STOP -> {
+                log("ESP32 paused location streaming")
+                stopLocationStreaming()
+                if (state == STATE_CONNECTED) {
+                    setState(STATE_CONNECTED, "Connected; location paused")
+                }
+            }
+            else -> log("ESP32 status: $message")
+        }
+    }
+
+    private fun startLocationStreaming() {
+        locationStreamingRequested = true
+        startLocationUpdates()
+        startPeriodicLocationSend()
+        if (state == STATE_CONNECTED) {
+            setState(STATE_CONNECTED, "Connected; sending location")
+        }
+        lastLocation?.let(::queueLocation)
+    }
+
+    private fun stopLocationStreaming() {
+        locationStreamingRequested = false
+        stopLocationUpdates()
+        stopPeriodicLocationSend()
+        clearWriteQueue()
     }
 
     private fun drainWriteQueue() {
@@ -550,6 +662,7 @@ class BikeBleLocationService : Service() {
     }
 
     private fun stopForegroundWork(text: String) {
+        locationStreamingRequested = false
         stopLocationUpdates()
         stopScanInternal()
         stopPeriodicLocationSend()
@@ -646,10 +759,16 @@ class BikeBleLocationService : Service() {
         private const val LOCATION_UPDATE_INTERVAL_MS = 2_000L
         private const val LOCATION_RESEND_INTERVAL_MS = 3_000L
         private const val WRITE_TIMEOUT_MS = 5_000L
+        private const val CONTROL_LOCATION_START = "location_start"
+        private const val CONTROL_LOCATION_STOP = "location_stop"
 
         private val SERVICE_UUID: UUID =
             UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
         private val RX_UUID: UUID =
             UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
+        private val TX_UUID: UUID =
+            UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
+        private val CCCD_UUID: UUID =
+            UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
     }
 }

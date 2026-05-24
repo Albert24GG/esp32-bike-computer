@@ -39,6 +39,7 @@ public:
   [[nodiscard]] esp_err_t init(const Config &config) noexcept;
   [[nodiscard]] esp_err_t start_pairing() noexcept;
   [[nodiscard]] esp_err_t cancel_pairing() noexcept;
+  void set_location_updates_requested(bool requested) noexcept;
 
   [[nodiscard]] bool is_connected() const noexcept { return connected_; }
 
@@ -67,6 +68,7 @@ private:
   bool advertising_requested_{false};
   bool connected_{false};
   bool tx_subscribed_{false};
+  bool location_updates_requested_{false};
 };
 
 } // namespace app
