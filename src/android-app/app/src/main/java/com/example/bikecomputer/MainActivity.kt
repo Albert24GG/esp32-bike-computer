@@ -19,7 +19,11 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import com.google.android.material.R as MaterialR
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.DynamicColors
@@ -61,6 +65,7 @@ class MainActivity : AppCompatActivity(), BikeBleLocationService.Listener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         DynamicColors.applyToActivityIfAvailable(this)
         super.onCreate(savedInstanceState)
         palette = Palette.from(this)
@@ -125,8 +130,18 @@ class MainActivity : AppCompatActivity(), BikeBleLocationService.Listener {
     private fun buildUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(18))
             setBackgroundColor(palette.background)
+        }
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.updatePadding(
+                left = dp(20) + systemBars.left,
+                top = systemBars.top + dp(12),
+                right = dp(20) + systemBars.right,
+                bottom = systemBars.bottom + dp(18)
+            )
+            insets
         }
 
         root.addView(TextView(this).apply {
@@ -328,10 +343,10 @@ class MainActivity : AppCompatActivity(), BikeBleLocationService.Listener {
                     surfaceContainer = MaterialColors.getColor(context, MaterialR.attr.colorSurfaceContainer, 0),
                     surfaceVariant = MaterialColors.getColor(context, MaterialR.attr.colorSurfaceVariant, 0),
                     primary = MaterialColors.getColor(context, android.R.attr.colorPrimary, 0),
-                    onPrimary = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnPrimary, 0),
-                    onBackground = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnBackground, 0),
-                    onSurface = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurface, 0),
-                    secondaryText = MaterialColors.getColor(context, android.R.attr.colorSecondary, 0)
+                    onPrimary = MaterialColors.getColor(context, MaterialR.attr.colorOnPrimary, 0),
+                    onBackground = MaterialColors.getColor(context, MaterialR.attr.colorOnBackground, 0),
+                    onSurface = MaterialColors.getColor(context, MaterialR.attr.colorOnSurface, 0),
+                    secondaryText = MaterialColors.getColor(context, MaterialR.attr.colorSecondary, 0)
                 )
             }
         }
