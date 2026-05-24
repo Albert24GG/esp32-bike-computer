@@ -35,6 +35,8 @@ public:
 
   [[nodiscard]] lv_display_t *display() const { return display_; }
 
+  [[nodiscard]] lv_obj_t* active_screen() const { return lv_disp_get_scr_act(display_); }
+
   void lock() const { lvgl_port_lock(0); }
 
   void unlock() const { lvgl_port_unlock(); }

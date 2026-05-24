@@ -2,6 +2,7 @@
 
 #include "../../../common/espnow_packet.hpp"
 #include "constants/app_config.hpp"
+#include "ui_ScreenMaps.h"
 #include "ui_presenter.hpp"
 #include "utils.hpp"
 
@@ -853,6 +854,14 @@ void App::ble_location_handler(void *event_handler_arg,
                                esp_event_base_t event_base, int32_t event_id,
                                void *event_data) noexcept {
   App &app = App::get_instance();
+
+  if (app.lvgl_.active_screen() != ui_ScreenMaps) {
+    ESP_LOGI(log_tag,
+             "Received BLE location event but maps screen is not active, "
+             "ignoring location update");
+    return;
+  }
+
   const auto &location = *static_cast<LocationCoordinates *>(event_data);
 
   {
