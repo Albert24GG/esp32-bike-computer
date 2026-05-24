@@ -6601,6 +6601,71 @@
             "strtype": "SCREEN/Style_scrollbar",
             "strval": "lv.PART.SCROLLBAR, Rectangle, Pad",
             "InheritedType": 11
+          },
+          {
+            "disabled": false,
+            "nid": 1000348,
+            "strtype": "_event/EventHandler",
+            "strval": "SCREEN_LOADED",
+            "childs": [
+              {
+                "nid": 1000349,
+                "strtype": "_event/name",
+                "strval": "EnterScreenMaps",
+                "InheritedType": 10
+              },
+              {
+                "nid": 1000350,
+                "strtype": "_event/condition_C",
+                "strval": "",
+                "InheritedType": 10
+              },
+              {
+                "nid": 1000351,
+                "strtype": "_event/condition_P",
+                "strval": "",
+                "InheritedType": 10
+              },
+              {
+                "nid": 1000352,
+                "strtype": "_event/action",
+                "strval": "CALL FUNCTION",
+                "childs": [
+                  {
+                    "nid": 1000353,
+                    "strtype": "CALL FUNCTION/Name",
+                    "strval": "CALL FUNCTION",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": 1000354,
+                    "strtype": "CALL FUNCTION/Call",
+                    "strval": "<{Function_name}>( event_struct )",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": 1000355,
+                    "strtype": "CALL FUNCTION/CallC",
+                    "strval": "<{Function_name}>( e );",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": 1000356,
+                    "strtype": "CALL FUNCTION/Function_name",
+                    "strval": "cb_enter_screen_maps",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": 1000357,
+                    "strtype": "CALL FUNCTION/Dont_export_function",
+                    "strval": "True",
+                    "InheritedType": 2
+                  }
+                ],
+                "InheritedType": 10
+              }
+            ],
+            "InheritedType": 4
           }
         ],
         "saved_objtypeKey": "SCREEN"
@@ -11883,7 +11948,7 @@
   },
   "animations": [],
   "selected_theme": "Default",
-  "selected_screen": "GUID87632984-863730S8825134",
+  "selected_screen": "GUID88499734-863745S845134",
   "info": {
     "name": "bike_computer_ui.spj",
     "depth": 1,
@@ -11912,7 +11977,7 @@
     "separate_screen_save": false,
     "hierarchy_state_save": false,
     "reverse_event_order": false,
-    "backup_cnt": 49,
+    "backup_cnt": 50,
     "autosave_cnt": 0,
     "group_color_cnt": 0,
     "imagebytearrayprefix": null,
@@ -11923,7 +11988,7 @@
     "naming": "Name",
     "naming_force_lowercase": false,
     "naming_add_subcomponent": false,
-    "nidcnt": 1000348,
+    "nidcnt": 1000364,
     "BitDepth": 16,
     "Name": "bike_computer_ui"
   }

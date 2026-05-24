@@ -22,3 +22,7 @@ def cb_exit_screen_maps(event_struct):
 def cb_ble_cancel_pairing(event_struct):
     return
 
+
+def cb_enter_screen_maps(event_struct):
+    return
+

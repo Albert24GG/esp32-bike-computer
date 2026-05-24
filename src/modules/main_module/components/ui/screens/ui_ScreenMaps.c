@@ -21,6 +21,15 @@ lv_obj_t * ui_MapsRenderContainer = NULL;
 lv_obj_t * ui_MapViewport = NULL;
 lv_obj_t * ui_LabelMapsCoordinates = NULL;
 // event funtions
+void ui_event_ScreenMaps(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_SCREEN_LOADED) {
+        cb_enter_screen_maps(e);
+    }
+}
+
 void ui_event_ButtonMapsBack_btn(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -190,6 +199,8 @@ void ui_ScreenMaps_screen_init(void)
     lv_obj_add_event_cb(ui_ButtonMapsBack, ui_event_ButtonMapsBack_btn, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_ButtonMapsStartPairing, ui_event_ButtonMapsStartPairing, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_ButtonMapsCancelPairing, ui_event_ButtonMapsCancelPairing, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_ScreenMaps, ui_event_ScreenMaps, LV_EVENT_ALL, NULL);
+
 }
 
 void ui_ScreenMaps_screen_destroy(void)
