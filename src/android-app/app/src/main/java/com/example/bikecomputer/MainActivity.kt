@@ -1,7 +1,6 @@
 package com.example.bikecomputer
 
 import android.Manifest
-import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.ComponentName
@@ -9,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.location.Location
@@ -18,13 +16,17 @@ import android.os.Bundle
 import android.os.IBinder
 import android.text.method.ScrollingMovementMethod
 import android.view.View
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.R as MaterialR
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
 import java.util.Locale
 
-class MainActivity : Activity(), BikeBleLocationService.Listener {
+class MainActivity : AppCompatActivity(), BikeBleLocationService.Listener {
     private var service: BikeBleLocationService? = null
     private var bound = false
     private var pendingStartScan = false
@@ -34,7 +36,7 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
     private lateinit var locationView: TextView
     private lateinit var logView: TextView
     private lateinit var logScroll: ScrollView
-    private lateinit var actionButton: Button
+    private lateinit var actionButton: MaterialButton
     private lateinit var palette: Palette
 
     private val connection = object : ServiceConnection {
@@ -59,6 +61,7 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        DynamicColors.applyToActivityIfAvailable(this)
         super.onCreate(savedInstanceState)
         palette = Palette.from(this)
         buildUi()
@@ -128,31 +131,35 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
 
         root.addView(TextView(this).apply {
             text = "Bike Computer"
-            textSize = 26f
-            typeface = Typeface.DEFAULT_BOLD
+            textSize = 28f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(palette.onBackground)
         })
 
         root.addView(surface().apply {
             addView(TextView(context).apply {
-                text = "Connection"
-                textSize = 13f
+                text = "CONNECTION"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
                 setTextColor(palette.secondaryText)
+                letterSpacing = 0.05f
             })
             statusView = TextView(context).apply {
                 text = "Idle"
-                textSize = 20f
-                typeface = Typeface.DEFAULT_BOLD
+                textSize = 22f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 setTextColor(palette.onSurface)
             }
             addView(statusView)
-        }, blockParams(top = 18))
+        }, blockParams(top = 24))
 
         root.addView(surface().apply {
             addView(TextView(context).apply {
-                text = "Phone location"
-                textSize = 13f
+                text = "PHONE LOCATION"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
                 setTextColor(palette.secondaryText)
+                letterSpacing = 0.05f
             })
             locationView = TextView(context).apply {
                 text = "No location yet"
@@ -162,35 +169,40 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
             addView(locationView)
         }, blockParams(top = 12))
 
-        actionButton = Button(this).apply {
+        actionButton = MaterialButton(this).apply {
             text = "Start scanning"
             textSize = 15f
-            setTextColor(palette.onPrimary)
-            background = rounded(palette.primary, 22f)
-            minHeight = dp(52)
+            cornerRadius = dp(28)
+            setPadding(0, dp(14), 0, dp(14))
+            insetBottom = 0
+            insetTop = 0
             stateListAnimator = null
         }
-        root.addView(actionButton, blockParams(top = 16))
+        root.addView(actionButton, blockParams(top = 20))
 
         logView = TextView(this).apply {
             textSize = 12f
             setTextColor(palette.onSurface)
             movementMethod = ScrollingMovementMethod()
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = rounded(palette.surface, 20f)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = rounded(palette.surfaceVariant, 16f)
+            typeface = Typeface.MONOSPACE
         }
-        logScroll = ScrollView(this).apply { addView(logView) }
+        logScroll = ScrollView(this).apply { 
+            isVerticalScrollBarEnabled = false
+            addView(logView) 
+        }
         root.addView(logScroll, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ).apply { topMargin = dp(16) })
+        ).apply { topMargin = dp(20) })
 
         setContentView(root)
     }
 
     private fun surface() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(14), dp(16), dp(14))
-        background = rounded(palette.surface, 22f)
+        setPadding(dp(20), dp(18), dp(20), dp(18))
+        background = rounded(palette.surfaceContainer, 24f)
     }
 
     private fun blockParams(top: Int) = LinearLayout.LayoutParams(
@@ -301,7 +313,8 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
 
     private data class Palette(
         val background: Int,
-        val surface: Int,
+        val surfaceContainer: Int,
+        val surfaceVariant: Int,
         val primary: Int,
         val onPrimary: Int,
         val onBackground: Int,
@@ -310,29 +323,15 @@ class MainActivity : Activity(), BikeBleLocationService.Listener {
     ) {
         companion object {
             fun from(context: Context): Palette {
-                val background = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    context.getColor(android.R.color.system_neutral1_10)
-                } else {
-                    Color.rgb(247, 250, 249)
-                }
-                val surface = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    context.getColor(android.R.color.system_neutral1_50)
-                } else {
-                    Color.WHITE
-                }
-                val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    context.getColor(android.R.color.system_accent1_600)
-                } else {
-                    Color.rgb(0, 108, 122)
-                }
                 return Palette(
-                    background = background,
-                    surface = surface,
-                    primary = primary,
-                    onPrimary = Color.WHITE,
-                    onBackground = Color.rgb(20, 31, 35),
-                    onSurface = Color.rgb(20, 31, 35),
-                    secondaryText = Color.rgb(89, 101, 105)
+                    background = MaterialColors.getColor(context, android.R.attr.colorBackground, 0),
+                    surfaceContainer = MaterialColors.getColor(context, MaterialR.attr.colorSurfaceContainer, 0),
+                    surfaceVariant = MaterialColors.getColor(context, MaterialR.attr.colorSurfaceVariant, 0),
+                    primary = MaterialColors.getColor(context, android.R.attr.colorPrimary, 0),
+                    onPrimary = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnPrimary, 0),
+                    onBackground = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnBackground, 0),
+                    onSurface = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurface, 0),
+                    secondaryText = MaterialColors.getColor(context, android.R.attr.colorSecondary, 0)
                 )
             }
         }
