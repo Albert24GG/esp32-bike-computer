@@ -1,27 +1,20 @@
-#include "driver/gpio.h"
 #include "driver/rtc_io.h"
 #include "driver/uart.h"
 #include "esp_attr.h"
-#include "esp_chip_info.h"
 #include "esp_err.h"
+#include "esp_log.h"
 #include "esp_now.h"
 #include "esp_private/esp_clk.h"
 #include "esp_sleep.h"
-#include "esp_system.h"
 #include "esp_wifi.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "hal/uart_types.h"
-#include "led_strip.h"
 #include "nvs_flash.h"
 #include "soc/rtc.h"
 #include "ulp_lp_core.h"
-#include "ulp_main.h"
 
 #include "../../common/espnow_packet.hpp"
+#include "ulp_main.h"
+
 #include "constants.hpp"
-#include "esp_log.h"
-#include <cstddef>
 #include <cstdint>
 
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
@@ -45,7 +38,7 @@ static void send_packet(const uint64_t *periods_us, size_t periods_len);
 static void recalibrate_slow_clock();
 
 static void wakeup_gpio_init() {
-  /* Configure the button GPIO as input, enable wakeup */
+  /* Configure the Hall effect sensor GPIO as input, enable wakeup */
   rtc_gpio_init(SENSOR_PIN);
   rtc_gpio_set_direction(SENSOR_PIN, RTC_GPIO_MODE_INPUT_ONLY);
   rtc_gpio_pulldown_dis(SENSOR_PIN);
@@ -74,24 +67,9 @@ init_ulp_program(uint32_t wakeup_source,
   start_ulp_program(wakeup_source, timer_sleep_duration_us);
 }
 
-static uint8_t s_led_state = 0;
-static constexpr gpio_num_t BLINK_GPIO = GPIO_NUM_15;
-
-static void blink_led() {
-  /* Set the GPIO level according to the state (LOW or HIGH)*/
-  gpio_set_level(BLINK_GPIO, s_led_state);
-}
-
-static void configure_led() {
-  gpio_reset_pin(BLINK_GPIO);
-  /* Set the GPIO as a push/pull output */
-  gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
-}
-
 static void enter_inactive_state() {
   ESP_LOGI(TAG, "Entering inactive state due to inactivity timeout");
 
-  // ulp_lp_core_stop();
   entered_inactive_state = 1;
   is_first_wakeup = 1;
   start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO);
@@ -100,7 +78,6 @@ static void enter_inactive_state() {
 static void exit_inactive_state() {
   ESP_LOGI(TAG, "Exiting inactive state");
 
-  // ulp_lp_core_stop();
   entered_inactive_state = 0;
   start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO |
                     ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
@@ -121,7 +98,8 @@ static void handle_ulp_wakeup() {
 
   ulp_lp_core_stop();
 
-  const uint32_t buf_len = std::min(shared_periods_buf_len, SHARED_PERIODS_BUF_SIZE);
+  const uint32_t buf_len =
+      std::min(shared_periods_buf_len, SHARED_PERIODS_BUF_SIZE);
 
   if (buf_len > 0) {
     uint64_t periods_buf[SHARED_PERIODS_BUF_SIZE] = {};
@@ -138,7 +116,8 @@ static void handle_ulp_wakeup() {
 
     uint32_t valid_periods_cnt = 0;
     for (size_t i = 0; i < buf_len; ++i) {
-      const uint64_t period_us = rtc_time_slowclk_to_us(periods_buf[i], slowclk_cal_value);
+      const uint64_t period_us =
+          rtc_time_slowclk_to_us(periods_buf[i], slowclk_cal_value);
       if (period_us < MIN_VALID_PERIOD_US) {
         continue;
       }
@@ -146,14 +125,7 @@ static void handle_ulp_wakeup() {
       periods_buf[valid_periods_cnt++] = period_us;
     }
 
-
     send_packet(periods_buf, valid_periods_cnt);
-
-    // For now just print debug logs
-    ESP_LOGI(TAG, "Received %d wheel periods from ULP:", buf_len);
-    for (size_t i = 0; i < buf_len; ++i) {
-      ESP_LOGI(TAG, "Wheel period %d: %llu us", i, periods_buf[i]);
-    }
 
   } else {
     if (entered_inactive_state == 1) {
@@ -162,30 +134,18 @@ static void handle_ulp_wakeup() {
       enter_inactive_state();
     }
   }
-
-
 }
 
 extern "C" void app_main(void) {
   ESP_LOGI(TAG, "Starting HP core\n");
 
   wakeup_gpio_init();
-  configure_led();
-
-  for (int i = 5; i > 0; i--) {
-    ESP_LOGI(TAG, "Starting in %d seconds...", i);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    blink_led();
-    s_led_state = !s_led_state;
-  }
 
   if (esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_ULP)) {
-    // logger.info("Woke up from ULP wakeup\n");
     ESP_LOGI(TAG, "Woke up from ULP wakeup");
 
     handle_ulp_wakeup();
   } else {
-    // logger.info("Not a ULP wakeup, initializing it!\n");
     ESP_LOGI(TAG, "Not a ULP wakeup, initializing it!");
     init_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO |
                      ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
@@ -255,8 +215,8 @@ static void send_packet(const uint64_t *periods_us, size_t periods_len) {
   ESP_LOGI(TAG,
            "Sent packet with seq_num %llu, %u wheel periods, cumulative "
            "rotations=%llu, cumulative ride time=%llu us",
-           packet.seq_num, packet.periods_buf_len,
-           packet.cumulative_rotations, packet.cumulative_ride_time_us);
+           packet.seq_num, packet.periods_buf_len, packet.cumulative_rotations,
+           packet.cumulative_ride_time_us);
 }
 
 static void recalibrate_slow_clock() {
