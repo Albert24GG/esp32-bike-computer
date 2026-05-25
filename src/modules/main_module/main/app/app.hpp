@@ -116,6 +116,7 @@ private:
   LocationCoordinates last_location_{};
   bool has_location_{false};
   mutable std::mutex state_mutex_{};
+  uint32_t last_wheel_boot_id_{0};
   uint64_t last_packet_seq_num_{0};
   uint64_t last_wheel_cumulative_rotations_{0};
   uint64_t last_wheel_cumulative_ride_time_us_{0};

@@ -7,6 +7,7 @@
 #include "esp_private/esp_clk.h"
 #include "esp_sleep.h"
 #include "esp_wifi.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 #include "soc/rtc.h"
 #include "ulp_lp_core.h"
@@ -22,6 +23,7 @@ extern const uint8_t ulp_main_bin_end[] asm("_binary_ulp_main_bin_end");
 
 static RTC_DATA_ATTR size_t wakeup_cnt_since_recalibration = 0;
 static RTC_DATA_ATTR uint64_t packet_seq = 1;
+static RTC_DATA_ATTR uint32_t wheel_boot_id = 0;
 static RTC_DATA_ATTR uint32_t slowclk_cal_value = esp_clk_slowclk_cal_get();
 static RTC_DATA_ATTR uint64_t cumulative_rotations = 0;
 static RTC_DATA_ATTR uint64_t cumulative_ride_time_us = 0;
@@ -34,6 +36,8 @@ static uint32_t &entered_inactive_state = ulp_entered_inactive_state;
 
 static void init_wifi();
 static void init_espnow();
+static void init_nvs();
+static void init_wheel_boot_id();
 static void send_packet(const uint64_t *periods_us, size_t periods_len);
 static void recalibrate_slow_clock();
 
@@ -81,10 +85,6 @@ static void exit_inactive_state() {
   entered_inactive_state = 0;
   start_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO |
                     ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
-}
-
-static uint64_t read_uin64_t(uint32_t *addr) {
-  return ((uint64_t)addr[1] << 32) | addr[0];
 }
 
 static void handle_ulp_wakeup() {
@@ -147,6 +147,7 @@ extern "C" void app_main(void) {
     handle_ulp_wakeup();
   } else {
     ESP_LOGI(TAG, "Not a ULP wakeup, initializing it!");
+    init_wheel_boot_id();
     init_ulp_program(ULP_LP_CORE_WAKEUP_SOURCE_LP_IO |
                      ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER);
   }
@@ -159,17 +160,50 @@ extern "C" void app_main(void) {
   esp_deep_sleep_start();
 }
 
-void init_wifi() {
-  {
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      ESP_ERROR_CHECK(nvs_flash_init());
-    } else {
-      ESP_ERROR_CHECK(ret);
-    }
+void init_nvs() {
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ESP_ERROR_CHECK(nvs_flash_init());
+  } else {
+    ESP_ERROR_CHECK(ret);
   }
+}
+
+void init_wheel_boot_id() {
+  init_nvs();
+
+  nvs_handle_t handle{};
+  ESP_ERROR_CHECK(nvs_open("wheel", NVS_READWRITE, &handle));
+
+  uint32_t stored_boot_id{};
+  const esp_err_t read_err = nvs_get_u32(handle, "boot_id", &stored_boot_id);
+  if (read_err != ESP_OK && read_err != ESP_ERR_NVS_NOT_FOUND) {
+    nvs_close(handle);
+    ESP_ERROR_CHECK(read_err);
+  }
+
+  ++stored_boot_id;
+  if (stored_boot_id == 0) {
+    stored_boot_id = 1;
+  }
+
+  ESP_ERROR_CHECK(nvs_set_u32(handle, "boot_id", stored_boot_id));
+  ESP_ERROR_CHECK(nvs_commit(handle));
+  nvs_close(handle);
+
+  wheel_boot_id = stored_boot_id;
+  packet_seq = 1;
+  cumulative_rotations = 0;
+  cumulative_ride_time_us = 0;
+
+  ESP_LOGI(TAG, "Wheel boot session initialized: boot_id=%lu",
+           static_cast<unsigned long>(wheel_boot_id));
+}
+
+void init_wifi() {
+  init_nvs();
 
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -194,6 +228,7 @@ static void send_packet(const uint64_t *periods_us, size_t periods_len) {
   init_espnow();
 
   BikePacket packet = {};
+  packet.boot_id = wheel_boot_id;
   packet.seq_num = packet_seq++;
   packet.periods_buf_len =
       static_cast<uint8_t>(std::min(periods_len, max_periods_per_packet));
@@ -213,9 +248,10 @@ static void send_packet(const uint64_t *periods_us, size_t periods_len) {
                                sizeof(packet)));
 
   ESP_LOGI(TAG,
-           "Sent packet with seq_num %llu, %u wheel periods, cumulative "
-           "rotations=%llu, cumulative ride time=%llu us",
-           packet.seq_num, packet.periods_buf_len, packet.cumulative_rotations,
+           "Sent packet with boot_id=%lu, seq_num=%llu, %u wheel periods, "
+           "cumulative rotations=%llu, cumulative ride time=%llu us",
+           static_cast<unsigned long>(packet.boot_id), packet.seq_num,
+           packet.periods_buf_len, packet.cumulative_rotations,
            packet.cumulative_ride_time_us);
 }
 

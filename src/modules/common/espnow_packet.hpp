@@ -6,6 +6,7 @@
 constexpr inline size_t max_periods_per_packet {10};
 
 struct __attribute__((packed)) BikePacket {
+    uint32_t boot_id;
     uint64_t seq_num;
     uint64_t cumulative_rotations;
     uint64_t cumulative_ride_time_us;

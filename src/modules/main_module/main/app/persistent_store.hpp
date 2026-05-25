@@ -13,6 +13,7 @@ struct PersistentRideState {
   uint64_t trip_distance_mm{0};
   uint64_t trip_time_us{0};
   uint64_t total_distance_mm{0};
+  uint32_t wheel_boot_id{0};
   uint64_t wheel_cumulative_rotations{0};
   uint64_t wheel_cumulative_ride_time_us{0};
 };

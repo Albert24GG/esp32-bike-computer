@@ -18,6 +18,11 @@ esp_err_t read_u16(nvs_handle_t handle, const char *key, uint16_t &value) {
   return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
 }
 
+esp_err_t read_u32(nvs_handle_t handle, const char *key, uint32_t &value) {
+  const esp_err_t err = nvs_get_u32(handle, key, &value);
+  return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
+}
+
 esp_err_t read_u64(nvs_handle_t handle, const char *key, uint64_t &value) {
   const esp_err_t err = nvs_get_u64(handle, key, &value);
   return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
@@ -125,6 +130,8 @@ esp_err_t PersistentStore::load_ride_state(PersistentRideState &state) noexcept 
                       "trip time read failed");
   ESP_RETURN_ON_ERROR(read_u64(handle_, "total_mm", loaded.total_distance_mm),
                       tag_, "total distance read failed");
+  ESP_RETURN_ON_ERROR(read_u32(handle_, "wheel_boot", loaded.wheel_boot_id),
+                      tag_, "wheel boot id read failed");
   ESP_RETURN_ON_ERROR(read_u64(handle_, "wheel_rot",
                                loaded.wheel_cumulative_rotations),
                       tag_, "wheel rotations read failed");
@@ -144,6 +151,8 @@ PersistentStore::save_ride_state(const PersistentRideState &state) noexcept {
                       "trip time write failed");
   ESP_RETURN_ON_ERROR(nvs_set_u64(handle_, "total_mm", state.total_distance_mm),
                       tag_, "total distance write failed");
+  ESP_RETURN_ON_ERROR(nvs_set_u32(handle_, "wheel_boot", state.wheel_boot_id),
+                      tag_, "wheel boot id write failed");
   ESP_RETURN_ON_ERROR(nvs_set_u64(handle_, "wheel_rot",
                                   state.wheel_cumulative_rotations),
                       tag_, "wheel rotations write failed");

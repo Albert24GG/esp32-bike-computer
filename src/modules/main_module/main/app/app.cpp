@@ -250,6 +250,7 @@ esp_err_t App::init_storage() noexcept {
                       log_tag, "Failed to load ride state");
   ride_metrics_.restore(to_ride_initial_state(loaded_ride_state_));
   ride_metrics_.set_wheel_circumference_mm(settings_.wheel_circumference_mm);
+  last_wheel_boot_id_ = loaded_ride_state_.wheel_boot_id;
   last_wheel_cumulative_rotations_ =
       loaded_ride_state_.wheel_cumulative_rotations;
   last_wheel_cumulative_ride_time_us_ =
@@ -502,6 +503,7 @@ PersistentRideState App::persistent_ride_state_unlocked() const noexcept {
       .trip_distance_mm = snapshot.trip_distance_mm,
       .trip_time_us = snapshot.trip_time_us,
       .total_distance_mm = snapshot.total_distance_mm,
+      .wheel_boot_id = last_wheel_boot_id_,
       .wheel_cumulative_rotations = last_wheel_cumulative_rotations_,
       .wheel_cumulative_ride_time_us = last_wheel_cumulative_ride_time_us_,
   };
@@ -710,8 +712,11 @@ void App::espnow_recv_handler(void *event_handler_arg,
   BikePacket packet{};
   memcpy(&packet, event_data, sizeof(BikePacket));
 
-  ESP_LOGI(log_tag, "Received ESP-NOW packet: seq_num=%llu, sample_count=%u",
-           packet.seq_num, packet.periods_buf_len);
+  ESP_LOGI(log_tag,
+           "Received ESP-NOW packet: boot_id=%lu, seq_num=%llu, "
+           "sample_count=%u",
+           static_cast<unsigned long>(packet.boot_id), packet.seq_num,
+           packet.periods_buf_len);
 
   if (packet.periods_buf_len > max_periods_per_packet) {
     ESP_LOGW(log_tag, "Received ESP-NOW packet with invalid sample count: %u",
@@ -719,20 +724,33 @@ void App::espnow_recv_handler(void *event_handler_arg,
     return;
   }
 
-  if (packet.seq_num <= app.last_packet_seq_num_) {
-    ESP_LOGW(log_tag,
-             "Received out-of-order or duplicate packet: seq_num=%llu, "
-             "last_seq_num=%llu",
-             packet.seq_num, app.last_packet_seq_num_);
-    return;
-  }
-
-  app.last_packet_seq_num_ = packet.seq_num;
-
   {
     std::lock_guard lock(app.state_mutex_);
 
+    const bool new_wheel_boot = packet.boot_id != app.last_wheel_boot_id_;
+
+    if (!new_wheel_boot && packet.seq_num <= app.last_packet_seq_num_) {
+      ESP_LOGW(log_tag,
+               "Received out-of-order or duplicate packet: boot_id=%lu, "
+               "seq_num=%llu, last_seq_num=%llu",
+               static_cast<unsigned long>(packet.boot_id), packet.seq_num,
+               app.last_packet_seq_num_);
+      return;
+    }
+
+    if (new_wheel_boot) {
+      ESP_LOGI(log_tag,
+               "Wheel boot id changed: previous=%lu, current=%lu; accepting "
+               "new wheel session",
+               static_cast<unsigned long>(app.last_wheel_boot_id_),
+               static_cast<unsigned long>(packet.boot_id));
+    }
+
+    app.last_wheel_boot_id_ = packet.boot_id;
+    app.last_packet_seq_num_ = packet.seq_num;
+
     const bool wheel_counter_reset =
+        new_wheel_boot ||
         packet.cumulative_rotations < app.last_wheel_cumulative_rotations_ ||
         packet.cumulative_ride_time_us <
             app.last_wheel_cumulative_ride_time_us_;
